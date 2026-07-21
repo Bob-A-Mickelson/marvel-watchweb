@@ -40,16 +40,16 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   .searchWrap{grid-column:1/3;grid-row:2;width:100%;margin:0}
   main{height:calc(100vh - 126px)}
   #stage{width:100%;overflow-y:auto;overflow-x:hidden}
-  .node{width:clamp(82px,25vw,108px);min-height:92px;padding:8px 7px;border-radius:11px}
-  .node .title{font-size:10.5px;line-height:1.12}
-  .node .year{font-size:9px;margin-top:4px}
-  .node .badge{font-size:7px;padding:3px 5px;margin-top:5px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .node{width:96px;min-height:96px;padding:9px 8px;border-radius:11px}
+  .node .title{font-size:11px;line-height:1.12;overflow-wrap:anywhere}
+  .node .year{font-size:9px;margin-top:5px}
+  .node .badge{font-size:7px;padding:3px 5px;margin-top:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
 </style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v004</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v005</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -127,9 +127,29 @@ function visibleSet(){return new Set(titles.map(x=>x.id))}
 function generationMap(selectedId){
   const gen={[selectedId]:0};
   const q=[selectedId];
-  while(q.length){const id=q.shift(),g=gen[id];for(const p of byId[id]?.p||[]){if(gen[p]==null||gen[p]<g+1){gen[p]=g+1;q.push(p)}}}
+  while(q.length){
+    const id=q.shift(),g=gen[id];
+    for(const p of byId[id]?.p||[]){
+      if(gen[p]==null||gen[p]<g+1){gen[p]=g+1;q.push(p)}
+    }
+  }
   return gen;
 }
+
+// Longest prerequisite path, returned oldest ancestor -> selected.
+// This becomes the visual "spine" of the focused ancestry tree.
+function longestPath(id,memo={}){
+  if(memo[id])return memo[id];
+  const ps=byId[id]?.p||[];
+  if(!ps.length)return memo[id]=[id];
+  let best=[];
+  for(const p of ps){
+    const cand=longestPath(p,memo);
+    if(cand.length>best.length)best=cand;
+  }
+  return memo[id]=[...best,id];
+}
+
 function fullLayout(){
   const sorted=[...titles].sort((a,b)=>a.y-b.y||a.t.localeCompare(b.t));
   const cols=Math.max(3,Math.ceil(Math.sqrt(sorted.length)));
@@ -137,32 +157,115 @@ function fullLayout(){
   const pos={}; sorted.forEach((n,i)=>{pos[n.id]={x:margin+(i%cols)*gapX,y:margin+Math.floor(i/cols)*gapY}});
   return {pos,w:margin*2+(cols-1)*gapX,h:margin*2+Math.ceil(sorted.length/cols)*gapY};
 }
-function ancestryLayout(selectedId){
-  const gens=generationMap(selectedId),anc=new Set(Object.keys(gens));
-  const maxG=Math.max(...Object.values(gens));
-  const mobile=window.innerWidth<=700;
-  const groups={};
-  for(const [id,g] of Object.entries(gens))(groups[g]??=[]).push(id);
-  Object.values(groups).forEach(arr=>arr.sort((a,b)=>byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t)));
 
-  const w=Math.max(280,stage.clientWidth||window.innerWidth);
-  const nodeW=mobile?Math.min(108,Math.max(82,w*.25)):170;
-  const side=mobile?Math.max(12,w*.025):100;
-  const usable=Math.max(nodeW,w-side*2);
-  const gapY=mobile?142:155;
-  const topPad=mobile?78:110;
-  const bottomPad=mobile?82:120;
-  const selectedY=topPad+maxG*gapY;
-  const h=selectedY+bottomPad;
+function ancestryLayout(selectedId){
+  const anc=ancestorsOf(selectedId,new Set());anc.add(selectedId);
+  const spine=longestPath(selectedId),spineSet=new Set(spine);
+  const mobile=window.innerWidth<=700;
+  const w=Math.max(300,stage.clientWidth||window.innerWidth);
+  const center=w/2;
+  const nodeW=mobile?96:170;
+  const edgePad=mobile?12:70;
+  const leftX=edgePad+nodeW/2;
+  const rightX=w-edgePad-nodeW/2;
+  const gapY=mobile?132:155;
+  const topPad=mobile?80:110;
+  const bottomPad=mobile?90:120;
   const pos={};
 
-  for(let g=0;g<=maxG;g++){
-    const arr=groups[g]||[];
-    if(arr.length===1){pos[arr[0]]={x:w/2,y:selectedY-g*gapY};continue}
-    const step=(usable-nodeW)/Math.max(1,arr.length-1);
-    arr.forEach((id,i)=>pos[id]={x:side+nodeW/2+i*step,y:selectedY-g*gapY});
+  // Deepest chain is always centered and vertically stacked.
+  spine.forEach((id,i)=>pos[id]={x:center,y:topPad+i*gapY});
+
+  // Every non-spine parent hanging from a spine node becomes a side branch.
+  const branches=[];
+  for(let i=1;i<spine.length;i++){
+    const child=spine[i],mainParent=spine[i-1];
+    for(const p of byId[child]?.p||[]){
+      if(p===mainParent||spineSet.has(p))continue;
+      const members=new Set();
+      (function collect(id){
+        if(spineSet.has(id)||members.has(id))return;
+        members.add(id);
+        for(const pp of byId[id]?.p||[])collect(pp);
+      })(p);
+      branches.push({root:p,attach:child,members});
+    }
   }
-  return {pos,w,h,anc};
+
+  // Also catch unusual side ancestry that reaches the selected graph through a
+  // non-spine node rather than directly through the spine.
+  const claimed=new Set(spine);
+  for(const b of branches)for(const id of b.members)claimed.add(id);
+  for(const id of anc){
+    if(claimed.has(id))continue;
+    branches.push({root:id,attach:selectedId,members:new Set([id])});
+    claimed.add(id);
+  }
+
+  // Build each side branch as its own short vertical ancestry line.
+  // Alternate left/right and stagger branch blocks so cards never overlap.
+  let leftBottom=-Infinity,rightBottom=-Infinity;
+  branches.sort((a,b)=>{
+    const ay=pos[a.attach]?.y||0,by=pos[b.attach]?.y||0;
+    return ay-by || (b.members.size-a.members.size);
+  });
+
+  branches.forEach((br,idx)=>{
+    const side = leftBottom<=rightBottom ? 'left' : 'right';
+    const x=side==='left'?leftX:rightX;
+    const attachY=pos[br.attach]?.y ?? pos[selectedId].y;
+
+    // Local generations: branch root is nearest the attachment; its ancestors stack above it.
+    const g={[br.root]:0},q=[br.root];
+    while(q.length){
+      const id=q.shift(),gg=g[id];
+      for(const p of byId[id]?.p||[]){
+        if(!br.members.has(p))continue;
+        if(g[p]==null||g[p]<gg+1){g[p]=gg+1;q.push(p)}
+      }
+    }
+    const groups={};
+    for(const id of br.members){
+      const gg=g[id]??0;(groups[gg]??=[]).push(id);
+    }
+    Object.values(groups).forEach(a=>a.sort((aa,bb)=>byId[aa].y-byId[bb].y||byId[aa].t.localeCompare(byId[bb].t)));
+    const depth=Math.max(0,...Object.values(g));
+
+    let blockTop=attachY-(depth+1)*gapY;
+    let blockBottom=attachY-gapY;
+
+    // If another branch already occupies this side at the same heights,
+    // move this branch upward as a unit. More vertical scrolling is preferable
+    // to unreadable overlap.
+    const occupiedBottom=side==='left'?leftBottom:rightBottom;
+    if(blockTop<=occupiedBottom+20){
+      const shift=(occupiedBottom+20)-blockTop;
+      blockTop-=shift;
+      blockBottom-=shift;
+    }
+
+    for(let gg=0;gg<=depth;gg++){
+      const arr=groups[gg]||[];
+      // Multiple nodes at the same branch generation are staggered vertically
+      // in the same side lane rather than overlapping horizontally.
+      arr.forEach((id,j)=>{
+        const y=blockBottom-gg*gapY-j*(mobile?104:118);
+        pos[id]={x,y};
+      });
+    }
+    const actualBottom=Math.max(...[...br.members].map(id=>pos[id]?.y||-Infinity));
+    if(side==='left')leftBottom=actualBottom; else rightBottom=actualBottom;
+  });
+
+  // Normalize if any side branch was pushed above the top.
+  const minY=Math.min(...Object.values(pos).map(p=>p.y));
+  if(minY<topPad){
+    const shift=topPad-minY;
+    for(const p of Object.values(pos))p.y+=shift;
+  }
+
+  const maxY=Math.max(...Object.values(pos).map(p=>p.y));
+  return {pos,w,h:maxY+bottomPad,anc,spineSet};
 }
 function render(){
   const selected=current?ancestryLayout(current):fullLayout();
@@ -178,8 +281,11 @@ function render(){
     for(const p of n.p||[]){
       if(!shown.has(p)||!pos[p]||!pos[n.id])continue;
       const a=pos[p],b=pos[n.id],path=document.createElementNS('http://www.w3.org/2000/svg','path');
-      const nodeHalf=window.innerWidth<=700?46:35,midY=(a.y+b.y)/2;
-      path.setAttribute('d',`M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
+      const nodeHalf=window.innerWidth<=700?50:35,midY=(a.y+b.y)/2;
+      const sameColumn=Math.abs(a.x-b.x)<2;
+      path.setAttribute('d',sameColumn
+        ? `M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`
+        : `M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
       path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));
       path.style.opacity=n.edge==='reference'?'.55':'.9';
       svg.appendChild(path);
