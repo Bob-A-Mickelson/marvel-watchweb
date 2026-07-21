@@ -39,17 +39,17 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   .headerAllBtn{grid-column:2;grid-row:1;font-size:12px;padding:8px 10px}
   .searchWrap{grid-column:1/3;grid-row:2;width:100%;margin:0}
   main{height:calc(100vh - 126px)}
-  #stage{width:100%;overflow-y:auto;overflow-x:auto;-webkit-overflow-scrolling:touch}
-  .node{width:88px;min-height:90px;padding:8px 7px;border-radius:10px}
-  .node .title{font-size:10.5px;line-height:1.1;overflow-wrap:anywhere}
-  .node .year{font-size:9px;margin-top:5px}
-  .node .badge{font-size:7px;padding:3px 5px;margin-top:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #stage{width:100%;overflow:auto;-webkit-overflow-scrolling:touch}
+  .node{width:82px;min-height:88px;padding:8px 7px;border-radius:10px}
+  .node .title{font-size:10px;line-height:1.08;overflow-wrap:anywhere}
+  .node .year{font-size:8.5px;margin-top:4px}
+  .node .badge{font-size:6.5px;padding:3px 5px;margin-top:5px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
 </style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v006</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v007</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -72,7 +72,7 @@ const universes={
   mcu:{name:'MCU',color:'#2fbf71'},
   fox:{name:'FOX X-MEN',color:'#d7aa28'},
   blade:{name:'BLADE',color:'#9aa3ad'},
-  dare:{name:'DAREDEVIL / ELEKTRA',color:'#d94b5f'},
+  dare:{name:'DAREDEVIL / ELEKRA',color:'#d94b5f'},
   ff:{name:'FOX FANTASTIC FOUR',color:'#63d7f2'},
   sony:{name:'VENOM / SONY',color:'#a855f7'},
   defenders:{name:'DEFENDERS SAGA',color:'#ef7f4d'},
@@ -171,96 +171,80 @@ function ancestryLayout(selectedId){
   const spine=longestPath(selectedId),spineSet=new Set(spine);
   const mobile=window.innerWidth<=700;
 
-  // Build level map measured upward from selected.
-  const level={[selectedId]:0};
-  const q=[selectedId];
+  // Distance upward from selected.
+  const level={[selectedId]:0},q=[selectedId];
   while(q.length){
     const id=q.shift(),lv=level[id];
     for(const p of byId[id]?.p||[]){
       if(!anc.has(p))continue;
-      if(level[p]==null || level[p]<lv+1){level[p]=lv+1;q.push(p)}
+      if(level[p]==null||level[p]<lv+1){level[p]=lv+1;q.push(p)}
     }
   }
   const maxLevel=Math.max(...Object.values(level));
-
-  // Longest path defines the center spine.
-  const spineLevel={};
-  spine.forEach((id,i)=>spineLevel[id]=spine.length-1-i);
-
   const groups={};
-  for(const id of anc){
-    const lv=level[id]??0;
-    (groups[lv]??=[]).push(id);
-  }
-
-  // Sort each horizontal level so the spine sits at center,
-  // longer descendant chains nearer center, shorter branches toward sides.
-  const depthMemo={};
-  function branchDepth(id){
-    if(depthMemo[id]!=null)return depthMemo[id];
-    let best=0;
-    for(const c of titles){
-      if((c.p||[]).includes(id) && anc.has(c.id))best=Math.max(best,1+branchDepth(c.id));
-    }
-    return depthMemo[id]=best;
-  }
+  for(const id of anc)(groups[level[id]??0]??=[]).push(id);
 
   const nodeW=mobile?82:155;
-  const minGap=mobile?18:34;
+  const minGap=mobile?16:30;
   const slot=nodeW+minGap;
-  const edgePad=mobile?18:70;
+  const edgePad=mobile?16:70;
+  const gapY=mobile?118:150;
+  const topPad=mobile?70:105;
+  const bottomPad=mobile?90:120;
 
+  // Canvas widens only when a row truly needs it. Four cards comfortably fit the normal mobile target.
   let maxCount=1;
   for(const arr of Object.values(groups))maxCount=Math.max(maxCount,arr.length);
-
-  // Four across should fit a normal phone. Wider generations expand the canvas.
-  const minViewport=Math.max(320,stage.clientWidth||window.innerWidth);
-  const widthNeeded=edgePad*2 + maxCount*nodeW + Math.max(0,maxCount-1)*minGap;
-  const w=Math.max(minViewport,widthNeeded);
+  const viewport=Math.max(320,stage.clientWidth||window.innerWidth);
+  const widthNeeded=edgePad*2+maxCount*nodeW+Math.max(0,maxCount-1)*minGap;
+  const w=Math.max(viewport,widthNeeded);
   const center=w/2;
-
-  const gapY=mobile?122:150;
-  const topPad=mobile?72:105;
-  const bottomPad=mobile?90:120;
   const pos={};
 
+  // Longest ancestry remains central. Other nodes at the same generation are distributed around it.
   for(let lv=maxLevel;lv>=0;lv--){
     const arr=(groups[lv]||[]).slice();
     const spineId=arr.find(id=>spineSet.has(id))||null;
     const others=arr.filter(id=>id!==spineId);
 
-    others.sort((a,b)=>{
-      const da=branchDepth(a),db=branchDepth(b);
-      if(db!==da)return db-da; // longer branches closer to center
-      return byId[a].y-byId[b].y || byId[a].t.localeCompare(byId[b].t);
-    });
+    // Prefer deeper/longer-looking branches near center, shorter toward sides.
+    function upDepth(id,memo={}){
+      if(memo[id]!=null)return memo[id];
+      const ps=(byId[id]?.p||[]).filter(p=>anc.has(p));
+      return memo[id]=ps.length?1+Math.max(...ps.map(p=>upDepth(p,memo))):0;
+    }
+    others.sort((a,b)=>upDepth(b)-upDepth(a)||byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t));
 
-    const ordered=[];
+    let ordered;
     if(spineId){
-      // Alternate longer branches around the centered spine.
       const left=[],right=[];
       others.forEach((id,i)=>(i%2===0?left:right).push(id));
-      left.reverse();
-      ordered.push(...left,spineId,...right);
+      ordered=[...left.reverse(),spineId,...right];
     }else{
-      ordered.push(...others);
+      ordered=others;
     }
 
-    const rowWidth=ordered.length*nodeW + Math.max(0,ordered.length-1)*minGap;
-    const startX=center-rowWidth/2+nodeW/2;
     const y=topPad+(maxLevel-lv)*gapY;
+    if(ordered.length===1){
+      pos[ordered[0]]={x:center,y};
+      continue;
+    }
 
-    ordered.forEach((id,i)=>{
-      let x=startX+i*slot;
-      if(id===spineId)x=center;
-      pos[id]={x,y};
-    });
+    const rowWidth=ordered.length*nodeW+Math.max(0,ordered.length-1)*minGap;
+    let startX=center-rowWidth/2+nodeW/2;
+    ordered.forEach((id,i)=>pos[id]={x:startX+i*slot,y});
+
+    // Force spine exactly to center, then shift neighbors outward as needed to prevent overlap.
+    if(spineId){
+      pos[spineId].x=center;
+      const spineIndex=ordered.indexOf(spineId);
+      for(let i=spineIndex-1;i>=0;i--)pos[ordered[i]].x=center-(spineIndex-i)*slot;
+      for(let i=spineIndex+1;i<ordered.length;i++)pos[ordered[i]].x=center+(i-spineIndex)*slot;
+    }
   }
 
-  // Selected is always dead center at the bottom.
   pos[selectedId]={x:center,y:topPad+maxLevel*gapY};
-
-  return {pos,w,h:(pos[selectedId].y+bottomPad),anc,spineSet};
+  return {pos,w,h:pos[selectedId].y+bottomPad,anc,spineSet};
 }
 function render(){
   const selected=current?ancestryLayout(current):fullLayout();
@@ -282,9 +266,9 @@ function render(){
         ? `M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`
         : `M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
       path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));
-      path.style.opacity=n.edge==='reference'?'.58':'.92';
-      path.style.stroke=universes[byId[p].u].color;
-      path.style.filter=`drop-shadow(0 0 3px ${universes[byId[p].u].color}55)`;
+      const branchUniverse=universes[byId[p]?.u]||{color:'#9aa3ad'};
+      path.style.stroke=branchUniverse.color;
+      path.style.opacity=n.edge==='reference'?'.5':'.92';
       svg.appendChild(path);
     }
   }
@@ -294,9 +278,10 @@ function render(){
     const u=universes[n.u],el=document.createElement('div');
     el.className='node'+(n.id===current?' selected':'')+(current?' ancestorNode':'');
     el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';
+    el.style.borderColor=u.color;
     el.style.boxShadow=n.id===current
-      ? `0 0 0 2px ${u.color},0 0 0 5px #fff,0 0 24px ${u.color}88,0 7px 20px #000a`
-      : `0 0 0 1px ${u.color}aa,0 0 18px ${u.color}44,0 7px 20px #000a`;
+      ? `0 0 0 1px ${u.color},0 0 0 5px #fff,0 0 22px ${u.color}88,0 7px 20px #000a`
+      : `0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;
     el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y}</div><div class=badge>${u.name}</div>`;
     el.onclick=()=>select(n.id);nodesEl.appendChild(el);
   }
