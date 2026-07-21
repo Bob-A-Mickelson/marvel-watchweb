@@ -3,39 +3,39 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>MCU Spiderweb</title>
+<title>Marvel WatchWeb</title>
 <style>
 :root{
   --bg:#07090e;--panel:#0f1420;--panel2:#121a29;--text:#f4f7fb;--muted:#99a6b8;--line:#2a3548;
 }
 *{box-sizing:border-box} body{margin:0;background:radial-gradient(circle at 20% 0%,#171d2b 0,#090c13 36%,#05070b 100%);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh;overflow:hidden}
-header{height:74px;display:flex;align-items:center;gap:18px;padding:14px 18px;border-bottom:1px solid #1e2735;background:#080b11dd;backdrop-filter:blur(10px)}
-.logo{font-weight:900;letter-spacing:.08em}.logo span{color:#ef3b45}.subtitle{color:var(--muted);font-size:13px}
+header{height:76px;display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #1e2735;background:#080b11f2;backdrop-filter:blur(10px);position:relative;z-index:50}
+.logo{font-weight:900;letter-spacing:.07em;white-space:nowrap}.logo span{color:#ef3b45}.version{font-size:9px;color:#728096;letter-spacing:.12em;margin-top:3px}.subtitle{color:var(--muted);font-size:13px}
 .searchWrap{margin-left:auto;position:relative;width:min(520px,50vw)}
 input{width:100%;background:#101725;border:1px solid #263246;color:white;border-radius:12px;padding:12px 14px;font-size:15px;outline:none}
 input:focus{border-color:#65799c;box-shadow:0 0 0 3px #65799c22}
 .results{position:absolute;top:48px;left:0;right:0;background:#0e1522;border:1px solid #263246;border-radius:12px;max-height:330px;overflow:auto;z-index:20;display:none;box-shadow:0 20px 50px #000a}
 .result{padding:11px 13px;border-bottom:1px solid #1d2634;cursor:pointer}.result:hover{background:#182235}.result small{color:var(--muted);display:block;margin-top:2px}
-main{display:grid;grid-template-columns:310px 1fr 330px;height:calc(100vh - 74px)}
+main{display:grid;grid-template-columns:280px 1fr 300px;height:calc(100vh - 76px)}
 aside{background:#0a0f18;border-right:1px solid #1c2634;overflow:auto;padding:16px}.right{border-right:0;border-left:1px solid #1c2634}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:#95a3b8;margin:8px 0 12px}
 .card{background:linear-gradient(180deg,#121a28,#0e1420);border:1px solid #222e41;border-radius:14px;padding:14px;margin-bottom:12px}
 .card strong{display:block;font-size:17px}.meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}
 .legendItem{display:flex;align-items:center;gap:10px;margin:8px 0;color:#d4d9e2;font-size:13px}.swatch{width:13px;height:13px;border-radius:50%;box-shadow:0 0 12px currentColor;background:currentColor}
 button{border:1px solid #2b3850;background:#121a29;color:white;border-radius:10px;padding:9px 11px;cursor:pointer}button:hover{background:#1a2538}.btnrow{display:flex;gap:8px;flex-wrap:wrap}
-#stage{position:relative;overflow:hidden;background-image:linear-gradient(#19213122 1px,transparent 1px),linear-gradient(90deg,#19213122 1px,transparent 1px);background-size:40px 40px;cursor:grab}#stage.dragging{cursor:grabbing}
-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.edge{fill:none;stroke:#61708a;stroke-width:2;opacity:.58}.edge.required{stroke:#e7edf6;opacity:.8}.edge.reference{stroke-dasharray:7 8;opacity:.45}
-.node{position:absolute;width:178px;min-height:72px;padding:11px 12px;border-radius:13px;background:#0d1320;border:1px solid #263146;transform:translate(-50%,-50%);cursor:pointer;transition:.16s ease;box-shadow:0 5px 18px #0008}
-.node:hover{transform:translate(-50%,-50%) scale(1.04);z-index:10}.node.selected{outline:2px solid white;z-index:11}.node .title{font-weight:800;font-size:13px;line-height:1.2}.node .year{font-size:11px;color:#a7b2c3;margin-top:5px}.node .badge{display:inline-block;margin-top:7px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:999px;background:#ffffff12;color:#dbe3ef}
+#stage{position:relative;overflow:auto;overscroll-behavior:contain;background-image:linear-gradient(#19213122 1px,transparent 1px),linear-gradient(90deg,#19213122 1px,transparent 1px);background-size:40px 40px;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}#canvas{position:relative;min-width:100%;min-height:100%}
+svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;stroke-width:2;opacity:.58}.edge.required{stroke:#e7edf6;opacity:.8}.edge.reference{stroke-dasharray:7 8;opacity:.45}
+.node{position:absolute;width:170px;min-height:72px;padding:11px 12px;border-radius:13px;background:#0d1320;border:1px solid #263146;transform:translate(-50%,-50%);cursor:pointer;transition:.16s ease;box-shadow:0 5px 18px #0008}
+.node:hover{transform:translate(-50%,-50%) scale(1.03);z-index:10}.node.selected{outline:3px solid white;z-index:11;box-shadow:0 0 0 4px #ffffff18,0 0 34px #fff5!important}.node.dimmed{opacity:.11;filter:saturate(.2);pointer-events:auto}.node.ancestorNode{opacity:1}.node .title{font-weight:800;font-size:13px;line-height:1.2}.node .year{font-size:11px;color:#a7b2c3;margin-top:5px}.node .badge{display:inline-block;margin-top:7px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:999px;background:#ffffff12;color:#dbe3ef}
 .empty{color:#8d9aad;font-size:14px;line-height:1.5}.ancestorList{font-size:13px}.ancestor{padding:9px 0;border-bottom:1px solid #202a38}.ancestor b{display:block}.ancestor span{color:#8795a8;font-size:11px}
 .note{font-size:12px;color:#92a0b4;line-height:1.5}.pill{display:inline-block;padding:4px 7px;border:1px solid #30405c;border-radius:999px;margin:3px 3px 0 0;font-size:10px;color:#cfd7e5}
 @media(max-width:1000px){main{grid-template-columns:240px 1fr}.right{display:none}.searchWrap{width:45vw}}
-@media(max-width:700px){main{grid-template-columns:1fr}aside{display:none}.searchWrap{width:auto;flex:1}.subtitle{display:none}}
+@media(max-width:700px){header{height:86px;align-items:flex-start;flex-wrap:wrap;padding:10px 12px}.logo{font-size:17px}.version{font-size:8px}.searchWrap{order:2;width:100%;margin-left:0}.searchWrap input{padding:10px 12px;font-size:16px}.results{top:44px}.subtitle{display:none}main{grid-template-columns:1fr;height:calc(100vh - 86px)}aside{display:none}.node{width:150px;min-height:68px;padding:10px}.node .title{font-size:12px}.node .year{font-size:10px}#stage{width:100vw}}
 </style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MCU</span> SPIDERWEB</div><div class="subtitle">Trace every screen-continuity path backward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v003</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
 <noscript><div style="padding:16px;background:#401018;color:white;font-family:system-ui">MCU Spiderweb needs JavaScript. Open this HTML file in Safari/Chrome rather than a document preview.</div></noscript>
@@ -46,7 +46,7 @@ svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.edge{fill
   <h2>Universe colors</h2><div id="legend"></div>
   <h2>Connection rules</h2><div class="note">Solid lines = prerequisite continuity. Dashed lines = meaningful reference/context. A title enters the web only through an on-screen continuity path.</div>
 </aside>
-<section id="stage"><svg id="edges"></svg><div id="nodes"></div></section>
+<section id="stage"><div id="canvas"><svg id="edges"></svg><div id="nodes"></div></div></section>
 <aside class="right">
   <h2>Required ancestry</h2><div id="ancestors" class="ancestorList"><div class="empty">Nothing selected.</div></div>
   <h2>Viewing modes</h2><div class="card note"><span class="pill">Minimum</span> direct essentials only<br><span class="pill">Full context</span> strong prerequisites<br><span class="pill">Completionist</span> every ancestor in the connected graph</div>
@@ -105,16 +105,59 @@ const titles=[
 {id:'bornagain',t:'Daredevil: Born Again',y:2025,u:'mcu',p:['dd3']}
 ];
 const byId=Object.fromEntries(titles.map(x=>[x.id,x]));let current=null,mode='all',pan={x:0,y:0},scale=1;
-const stage=document.getElementById('stage'),nodesEl=document.getElementById('nodes'),svg=document.getElementById('edges');
+const stage=document.getElementById('stage'),canvas=document.getElementById('canvas'),nodesEl=document.getElementById('nodes'),svg=document.getElementById('edges');
 function ancestorsOf(id,set=new Set()){let n=byId[id];if(!n?.p)return set;for(const p of n.p){if(!set.has(p)){set.add(p);ancestorsOf(p,set)}}return set}
 function descendantsOf(id,set=new Set()){for(const n of titles){if(n.p?.includes(id)&&!set.has(n.id)){set.add(n.id);descendantsOf(n.id,set)}}return set}
-function visibleSet(){if(mode==='all'||!current)return new Set(titles.map(x=>x.id));let s=ancestorsOf(current);s.add(current);return s}
-function layout(vis){const ids=[...vis];const depth={};function d(id){if(depth[id]!=null)return depth[id];const n=byId[id];if(!n?.p?.length)return depth[id]=0;const ps=n.p.filter(x=>vis.has(x));return depth[id]=ps.length?1+Math.max(...ps.map(d)):0}ids.forEach(d);const groups={};ids.forEach(id=>(groups[depth[id]]??=[]).push(id));const maxD=Math.max(...Object.keys(groups).map(Number));const w=stage.clientWidth,h=stage.clientHeight;const pos={};for(let dep=0;dep<=maxD;dep++){const arr=groups[dep]||[];arr.sort((a,b)=>byId[a].y-byId[b].y);arr.forEach((id,i)=>{pos[id]={x:120+dep*Math.max(220,(w-240)/Math.max(1,maxD)),y:(h/(arr.length+1))*(i+1)}})}return pos}
-function render(){const vis=visibleSet(),pos=layout(vis);nodesEl.innerHTML='';svg.innerHTML='';for(const id of vis){const n=byId[id];for(const p of n.p||[]){if(!vis.has(p))continue;const a=pos[p],b=pos[id];const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d',`M ${a.x} ${a.y} C ${a.x+90} ${a.y}, ${b.x-90} ${b.y}, ${b.x} ${b.y}`);path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));svg.appendChild(path)}}for(const id of vis){const n=byId[id],u=universes[n.u],el=document.createElement('div');el.className='node'+(id===current?' selected':'');el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';el.style.boxShadow=`0 0 0 1px ${u.color}88,0 0 22px ${u.color}55,0 7px 20px #000a`;el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y}</div><div class=badge>${u.name}</div>`;el.onclick=()=>select(id);nodesEl.appendChild(el)}applyTransform();}
-function applyTransform(){nodesEl.style.transform=`translate(${pan.x}px,${pan.y}px) scale(${scale})`;nodesEl.style.transformOrigin='0 0';svg.style.transform=`translate(${pan.x}px,${pan.y}px) scale(${scale})`;svg.style.transformOrigin='0 0'}
-function select(id){current=id;mode='ancestry';const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y} · ${u.name}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();}
-document.getElementById('allBtn').onclick=()=>{mode='all';render()};document.getElementById('fitBtn').onclick=()=>{pan={x:0,y:0};scale=1;render()};
-let drag=false,last={x:0,y:0};stage.onpointerdown=e=>{drag=true;last={x:e.clientX,y:e.clientY};stage.classList.add('dragging');stage.setPointerCapture(e.pointerId)};stage.onpointermove=e=>{if(!drag)return;pan.x+=e.clientX-last.x;pan.y+=e.clientY-last.y;last={x:e.clientX,y:e.clientY};applyTransform()};stage.onpointerup=()=>{drag=false;stage.classList.remove('dragging')};stage.onwheel=e=>{e.preventDefault();scale=Math.max(.45,Math.min(1.8,scale*(e.deltaY<0?1.08:.92)));applyTransform()};
+function visibleSet(){return new Set(titles.map(x=>x.id))}
+function generationMap(selectedId){
+  const gen={[selectedId]:0};
+  const q=[selectedId];
+  while(q.length){const id=q.shift(),g=gen[id];for(const p of byId[id]?.p||[]){if(gen[p]==null||gen[p]<g+1){gen[p]=g+1;q.push(p)}}}
+  return gen;
+}
+function fullLayout(){
+  const sorted=[...titles].sort((a,b)=>a.y-b.y||a.t.localeCompare(b.t));
+  const cols=Math.max(3,Math.ceil(Math.sqrt(sorted.length)));
+  const gapX=190,gapY=118,margin=110;
+  const pos={}; sorted.forEach((n,i)=>{pos[n.id]={x:margin+(i%cols)*gapX,y:margin+Math.floor(i/cols)*gapY}});
+  return {pos,w:margin*2+(cols-1)*gapX,h:margin*2+Math.ceil(sorted.length/cols)*gapY};
+}
+function ancestryLayout(selectedId){
+  const gens=generationMap(selectedId),anc=new Set(Object.keys(gens));
+  const maxG=Math.max(...Object.values(gens));
+  const mobile=window.innerWidth<=700;
+  const gapY=mobile?170:155, gapX=mobile?178:205, marginX=mobile?95:130, bottomPad=mobile?150:120;
+  const groups={};for(const [id,g] of Object.entries(gens))(groups[g]??=[]).push(id);
+  Object.values(groups).forEach(arr=>arr.sort((a,b)=>byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t)));
+  const maxCount=Math.max(...Object.values(groups).map(a=>a.length));
+  const w=Math.max(stage.clientWidth,marginX*2+Math.max(1,maxCount-1)*gapX+170);
+  const selectedY=bottomPad+maxG*gapY+100;
+  const h=selectedY+bottomPad;
+  const pos={};
+  for(let g=0;g<=maxG;g++){
+    const arr=groups[g]||[];const rowW=(arr.length-1)*gapX;const start=w/2-rowW/2;
+    arr.forEach((id,i)=>pos[id]={x:start+i*gapX,y:selectedY-g*gapY});
+  }
+  // Keep non-ancestors present but ghosted in two side rails, so the larger web is still perceptible.
+  const others=titles.filter(n=>!anc.has(n.id)).sort((a,b)=>a.y-b.y||a.t.localeCompare(b.t));
+  const railLeft=mobile?35:60, railRight=w-(mobile?35:60);
+  others.forEach((n,i)=>{const side=i%2===0?railLeft:railRight;pos[n.id]={x:side,y:80+Math.floor(i/2)*90}});
+  return {pos,w,h,anc};
+}
+function render(){
+  const selected=current?ancestryLayout(current):fullLayout(); const pos=selected.pos; const anc=selected.anc||new Set();
+  canvas.style.width=selected.w+'px';canvas.style.height=selected.h+'px';svg.setAttribute('width',selected.w);svg.setAttribute('height',selected.h);
+  nodesEl.innerHTML='';svg.innerHTML='';
+  for(const n of titles){for(const p of n.p||[]){if(!pos[p]||!pos[n.id])continue;const inPath=!current||(anc.has(p)&&anc.has(n.id));const a=pos[p],b=pos[n.id];const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    const midY=(a.y+b.y)/2; path.setAttribute('d',`M ${a.x} ${a.y+35} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-35}`);
+    path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));path.style.opacity=inPath?(n.edge==='reference'?'.55':'.9'):'.035';svg.appendChild(path)}}
+  for(const n of titles){const u=universes[n.u],el=document.createElement('div'),isAnc=!current||anc.has(n.id);el.className='node'+(n.id===current?' selected':'')+(current&&!isAnc?' dimmed':'')+(current&&isAnc?' ancestorNode':'');el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';el.style.boxShadow=`0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y}</div><div class=badge>${u.name}</div>`;el.onclick=()=>select(n.id);nodesEl.appendChild(el)}
+}
+function focusSelected(){if(!current)return;requestAnimationFrame(()=>{const el=nodesEl.querySelector('.node.selected');if(!el)return;const top=Math.max(0,el.offsetTop-stage.clientHeight+150);const left=Math.max(0,el.offsetLeft-stage.clientWidth/2);stage.scrollTo({top,left,behavior:'smooth'})})}
+function select(id){current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y} · ${u.name}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
+document.getElementById('allBtn').onclick=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
+document.getElementById('fitBtn').onclick=()=>focusSelected();
+window.addEventListener('resize',()=>{render();if(current)focusSelected()});
 const search=document.getElementById('search'),results=document.getElementById('results');search.oninput=()=>{const q=search.value.toLowerCase().trim();if(!q){results.style.display='none';return}const m=titles.filter(x=>x.t.toLowerCase().includes(q)).slice(0,12);results.innerHTML=m.map(x=>`<div class=result data-id=${x.id}>${x.t}<small>${x.y} · ${universes[x.u].name}</small></div>`).join('');results.style.display=m.length?'block':'none';[...results.children].forEach(el=>el.onclick=()=>{select(el.dataset.id);search.value=byId[el.dataset.id].t;results.style.display='none'})};
 search.addEventListener('keydown',e=>{if(e.key==='Enter'){const first=results.querySelector('.result');if(first){e.preventDefault();first.click()}}});
 document.addEventListener('click',e=>{if(!e.target.closest('.searchWrap'))results.style.display='none'});
