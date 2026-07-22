@@ -60,7 +60,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v017</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v018</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -173,16 +173,15 @@ function ancestryLayout(selectedId){
   const anc=ancestorsOf(selectedId,new Set());anc.add(selectedId);
   const mobile=window.innerWidth<=700;
   const nodeW=mobile?96:170;
-  const gapX=mobile?22:38;
+  const gapX=mobile?26:42;
   const slot=nodeW+gapX;
   const gapY=mobile?132:155;
   const topPad=mobile?80:110;
-  const bottomPad=mobile?100:130;
-  const sidePad=mobile?22:80;
+  const bottomPad=mobile?105:135;
+  const sidePad=mobile?24:85;
 
   const directParents=(byId[selectedId]?.p||[]).filter(id=>anc.has(id));
 
-  // Depth of ancestry above a node.
   const depthMemo={};
   function upDepth(id){
     if(depthMemo[id]!=null)return depthMemo[id];
@@ -190,9 +189,7 @@ function ancestryLayout(selectedId){
     return depthMemo[id]=ps.length?1+Math.max(...ps.map(upDepth)):0;
   }
 
-  // Each direct parent of the selected title defines a primary branch/trunk.
-  // This naturally keeps Deadpool->Deadpool 2, Daredevil->Elektra,
-  // Fantastic Four->Silver Surfer, Blade trilogy, etc. stacked vertically.
+  // Build independent primary branches from each direct parent of the selected title.
   const branches=directParents.map(root=>{
     const members=new Set();
     (function collect(id){
@@ -200,120 +197,145 @@ function ancestryLayout(selectedId){
       members.add(id);
       for(const p of byId[id]?.p||[]) if(anc.has(p)) collect(p);
     })(root);
-    return {root,members,depth:upDepth(root)};
+    return {root,members,depth:upDepth(root),u:byId[root]?.u};
   });
 
-  // Longest branch is the center trunk; shorter branches fan outward.
+  // Keep longest branch central; shorter branches fan outward.
   branches.sort((a,b)=>b.depth-a.depth || a.root.localeCompare(b.root));
+  const longest=branches[0]||null;
   const ordered=[];
-  if(branches.length){
-    ordered.push(branches[0]);
-    let left=[],right=[];
+  if(longest){
+    const left=[],right=[];
     branches.slice(1).forEach((b,i)=>(i%2===0?left:right).push(b));
-    left.reverse();
-    ordered.splice(0,0,...left);
-    ordered.push(...right);
+    ordered.push(...left.reverse(),longest,...right);
   }
 
-  const centerIndex=ordered.findIndex(b=>b===branches[0]);
+  const centerIndex=Math.max(0,ordered.indexOf(longest));
   const branchCount=Math.max(1,ordered.length);
-
-  // Canvas width: one clean column per primary branch, with extra local room
-  // when a branch itself forks (e.g. X-Men/Wolverine history feeding Logan).
-  let extraForkColumns=0;
-  for(const br of ordered){
-    const localMax={};
-    for(const id of br.members){
-      const d=upDepth(id);
-      localMax[d]=(localMax[d]||0)+1;
-    }
-    extraForkColumns=Math.max(extraForkColumns,
-      Math.max(0,...Object.values(localMax).map(n=>Math.max(0,n-1)))
-    );
-  }
-
   const viewport=Math.max(300,stage.clientWidth||window.innerWidth);
-  const baseCols=branchCount+Math.min(2,extraForkColumns);
-  const needed=sidePad*2+baseCols*nodeW+Math.max(0,baseCols-1)*gapX;
+  const needed=sidePad*2+branchCount*nodeW+Math.max(0,branchCount-1)*gapX;
   const w=Math.max(viewport,needed);
   const center=w/2;
   const pos={};
+  const placed=new Set();
 
-  // Assign primary branch X positions with the longest branch exactly centered.
-  const branchX=new Map();
-  ordered.forEach((br,i)=>{
-    branchX.set(br.root, center+(i-centerIndex)*slot);
-  });
-
-  // Selected title is bottom center.
   const maxDepth=Math.max(0,...branches.map(b=>b.depth+1));
-  const selectedY=topPad+maxDepth*gapY;
+  let selectedY=topPad+maxDepth*gapY;
   pos[selectedId]={x:center,y:selectedY};
+  placed.add(selectedId);
 
-  // Lay each branch independently from its root downward toward selected.
-  // Main/longest local chain stays in the branch column; forks occupy nearby columns.
-  const globallyPlaced=new Set([selectedId]);
+  const branchX=new Map();
+  ordered.forEach((br,i)=>branchX.set(br.root,center+(i-centerIndex)*slot));
 
+  // Find the longest path inside a branch root; that path becomes the trunk.
+  function longestLocalPath(root,memberSet){
+    const memo={};
+    function walk(id){
+      if(memo[id])return memo[id];
+      const ps=(byId[id]?.p||[]).filter(p=>memberSet.has(p));
+      if(!ps.length)return memo[id]=[id];
+      let best=[];
+      for(const p of ps){
+        const cand=walk(p);
+        if(cand.length>best.length)best=cand;
+      }
+      return memo[id]=[...best,id];
+    }
+    return walk(root);
+  }
+
+  // Layout each branch independently. Crucially, franchise/sub-series continuity
+  // wins over equal-generation row alignment.
   for(const br of ordered){
     const bx=branchX.get(br.root);
-
-    // Longest local path ending at branch root: oldest -> root.
-    const mainPath=longestPath(br.root).filter(id=>br.members.has(id));
-    const mainSet=new Set(mainPath);
-
-    // Place main chain vertically in one column, with root directly above selected.
+    const trunk=longestLocalPath(br.root,br.members);
+    const trunkSet=new Set(trunk);
     const rootY=selectedY-gapY;
-    for(let i=mainPath.length-1;i>=0;i--){
-      const id=mainPath[i];
-      const stepsAbove=(mainPath.length-1)-i;
-      if(!globallyPlaced.has(id)){
-        pos[id]={x:bx,y:rootY-stepsAbove*gapY};
-        globallyPlaced.add(id);
+
+    // Trunk is a vertical column.
+    for(let i=trunk.length-1;i>=0;i--){
+      const id=trunk[i];
+      const steps=(trunk.length-1)-i;
+      if(!placed.has(id)){
+        pos[id]={x:bx,y:rootY-steps*gapY};
+        placed.add(id);
       }
     }
 
-    // Remaining nodes are side-forks inside this franchise branch.
-    const remaining=[...br.members].filter(id=>!globallyPlaced.has(id));
-    remaining.sort((a,b)=>upDepth(b)-upDepth(a)||byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t));
-
-    let leftN=1,rightN=1;
+    // Group remaining nodes by franchise/sub-series key first.
+    const remaining=[...br.members].filter(id=>!placed.has(id));
+    const byUniverse={};
     for(const id of remaining){
-      // Anchor vertically according to its ancestry depth relative to the branch root.
-      // Older ancestors are higher.
-      let distance=0;
-      const seen=new Set();
-      const q=[[br.root,0]];
-      while(q.length){
-        const [cur,d]=q.shift();
-        if(seen.has(cur))continue;seen.add(cur);
-        if(cur===id){distance=d;break}
-        for(const p of byId[cur]?.p||[]) if(br.members.has(p)) q.push([p,d+1]);
+      const key=byId[id]?.u||'other';
+      (byUniverse[key]??=[]).push(id);
+    }
+
+    let laneOffset=1;
+    for(const [u,ids] of Object.entries(byUniverse)){
+      // Preserve a vertical sub-branch for same-franchise chains.
+      ids.sort((a,b)=>byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t));
+      const laneX = bx + ((laneOffset%2)?-1:1)*Math.ceil(laneOffset/2)*slot;
+      laneOffset++;
+
+      // Determine internal ordering by walking prerequisite links within this subgroup.
+      const subgroup=new Set(ids);
+      const localRoots=ids.filter(id=>{
+        // node is nearest the selected within this subgroup if no child in subgroup points to it
+        return !ids.some(other=>(byId[other]?.p||[]).includes(id));
+      });
+
+      // Fallback deterministic root if graph is unusual.
+      const roots=localRoots.length?localRoots:[ids[ids.length-1]];
+      let laneBottom=rootY;
+
+      for(const root of roots){
+        const chain=longestLocalPath(root,subgroup);
+        for(let i=chain.length-1;i>=0;i--){
+          const id=chain[i];
+          if(placed.has(id))continue;
+          const steps=(chain.length-1)-i;
+          pos[id]={x:laneX,y:laneBottom-steps*gapY};
+          placed.add(id);
+        }
+        laneBottom -= chain.length*gapY;
       }
 
-      const useLeft=leftN<=rightN;
-      const x=useLeft?bx-leftN*slot:bx+rightN*slot;
-      if(useLeft)leftN++; else rightN++;
-      pos[id]={x,y:rootY-distance*gapY};
-      globallyPlaced.add(id);
+      // Any leftovers in this subgroup stack above in the same lane, never forced
+      // into another franchise's horizontal row.
+      for(const id of ids){
+        if(placed.has(id))continue;
+        laneBottom-=gapY;
+        pos[id]={x:laneX,y:laneBottom};
+        placed.add(id);
+      }
     }
   }
 
-  // Any shared/unclaimed ancestor gets a safe position above the selected tree
-  // rather than disappearing.
-  const leftovers=[...anc].filter(id=>!globallyPlaced.has(id));
-  leftovers.forEach((id,i)=>{
-    pos[id]={x:center+(i%2===0?-1:1)*(Math.floor(i/2)+1)*slot,
-             y:topPad};
-  });
+  // Shared or unusual ancestors not claimed by a primary branch get independent lanes
+  // rather than being snapped into another franchise's row.
+  const leftovers=[...anc].filter(id=>!placed.has(id));
+  let extra=1;
+  for(const id of leftovers){
+    const sign=extra%2?-1:1;
+    const step=Math.ceil(extra/2);
+    pos[id]={x:center+sign*step*slot,y:topPad};
+    extra++;
+    placed.add(id);
+  }
 
+  // Normalize top edge if any independently offset branch extends above the canvas.
   const minY=Math.min(...Object.values(pos).map(p=>p.y));
   if(minY<topPad){
     const shift=topPad-minY;
     for(const p of Object.values(pos))p.y+=shift;
+    selectedY+=shift;
   }
 
   const maxY=Math.max(...Object.values(pos).map(p=>p.y));
-  return {pos,w,h:maxY+bottomPad,anc,spineSet:new Set(branches[0]?longestPath(branches[0].root):[selectedId])};
+  return {
+    pos,w,h:maxY+bottomPad,anc,
+    spineSet:new Set(longest?longestLocalPath(longest.root,longest.members):[selectedId])
+  };
 }
 function render(){
   const selected=current?ancestryLayout(current):fullLayout();
