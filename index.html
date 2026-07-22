@@ -46,10 +46,23 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   .node .badge{font-size:7px;padding:3px 5px;margin-top:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 }
 </style>
+
+<style>
+/* v012 visual refinement: bold franchise borders, thinner white selection ring */
+.node{
+  border-width:4px !important;
+}
+.node.selected{
+  border-width:4px !important;
+  outline:2px solid #fff !important;
+  outline-offset:2px !important;
+}
+</style>
+
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v011</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v012</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -246,7 +259,15 @@ function render(){
 
   canvas.style.width=selected.w+'px';canvas.style.height=selected.h+'px';
   svg.setAttribute('width',selected.w);svg.setAttribute('height',selected.h);
-  nodesEl.innerHTML='';svg.innerHTML='';
+  nodesEl.innerHTML='';
+  // v012: ancestry lines inherit the source/parent title's franchise color.
+  requestAnimationFrame(()=>{
+    edgesEl.querySelectorAll('path[data-from]').forEach(path=>{
+      const from=path.dataset.from;
+      if(byId[from]) path.setAttribute('stroke',universes[byId[from].u]?.color||'#9aa3ad');
+    });
+  });
+svg.innerHTML='';
 
   for(const n of titles){
     if(!shown.has(n.id))continue;
