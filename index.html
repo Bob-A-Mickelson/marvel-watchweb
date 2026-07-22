@@ -165,10 +165,34 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   position:absolute;left:0;right:0;height:1px;background:#192335;pointer-events:none
 }
 </style>
+
+<style>
+/* v022 character-centric controls + orthogonal branch layout */
+.relevanceBar{
+  display:grid !important;
+  grid-template-columns:1fr;
+  gap:6px !important;
+  overflow:visible !important;
+}
+.controlRow{
+  display:flex;align-items:center;gap:7px;flex-wrap:wrap;
+}
+.controlRow .relevanceLabel{min-width:42px}
+#viewModeRow{display:none !important}
+.logicControls{display:flex !important;margin-left:0 !important}
+.orderControls{margin-left:0 !important}
+.branchLabel{
+  position:absolute;top:8px;transform:translateX(-50%);
+  font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#8291a7;
+  max-width:130px;text-align:center;pointer-events:none
+}
+.edge.orthogonal{fill:none;stroke-linejoin:round;stroke-linecap:round}
+.contextGateway::after{content:"Add context"}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v021 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v022 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -196,17 +220,27 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </div>
 
 
+
 <div id="relevanceBar" class="relevanceBar">
-  <span class="relevanceLabel">View</span>
-  <button class="relevanceBtn" data-main-mode="minimum">Lite</button>
-  <button class="relevanceBtn active" data-main-mode="standard">Recommended</button>
-  <button class="relevanceBtn" data-main-mode="expanded">Expanded</button>
-  <div class="orderControls"><span class="relevanceLabel">Order</span><button class="orderBtn active" data-order="story">Story</button><button class="orderBtn" data-order="release">Release</button></div><div id="logicControls" class="logicControls">
+  <div id="viewModeRow" class="controlRow">
+    <span class="relevanceLabel">View</span>
+  </div>
+  <div class="controlRow">
     <span class="relevanceLabel">Match</span>
-    <button class="logicBtn active" data-logic="union">AND/OR</button>
-    <button class="logicBtn" data-logic="intersection">AND</button>
+    <div id="logicControls" class="logicControls">
+      <button class="logicBtn active" data-logic="union">AND/OR</button>
+      <button class="logicBtn" data-logic="intersection">AND</button>
+    </div>
+  </div>
+  <div class="controlRow">
+    <span class="relevanceLabel">Year</span>
+    <div class="orderControls">
+      <button class="orderBtn active" data-order="story">Story</button>
+      <button class="orderBtn" data-order="release">Release</button>
+    </div>
   </div>
 </div>
+
 <main>
 <aside>
   <h2>Selected title</h2><div id="selectedCard" class="card"><div class="empty">Choose a title to reveal its ancestry.</div></div>
@@ -296,7 +330,7 @@ function appearanceUnitsForInc(iid){return [...new Set((appsByInc.get(iid)||[]).
 
 let current=null,pan={x:0,y:0},scale=1;
 let viewingMode='standard',showChildren=true,groupFranchises=true;
-let focusMode='title',focusCharacterId=null,focusIncarnationIds=new Set(),focusAppearanceIds=new Set(),characterLogic='union',temporalOrder='story';
+let focusMode='title',focusCharacterId=null,focusIncarnationIds=new Set(),focusAppearanceIds=new Set(),characterLogic='union',temporalOrder='story',extraContextBranches=new Set();
 const activeFranchises=new Set(Object.keys(universes));
 const expandedGatewayFranchises=new Set();
 
@@ -604,7 +638,7 @@ function recalcCharacterAppearances(){
 }
 function enterCharacterFocus(iid){
  const inc=incarnationById[iid];if(!inc)return;
- focusMode='character';focusCharacterId=inc["Character ID"];focusIncarnationIds=new Set([iid]);characterLogic='union';
+ focusMode='character';focusCharacterId=inc["Character ID"];focusIncarnationIds=new Set([iid]);characterLogic='union';extraContextBranches.clear();
  recalcCharacterAppearances();
  current=[...focusAppearanceIds].sort((a,b)=>(byId[a]?.y||0)-(byId[b]?.y||0)).slice(-1)[0]||null;
  document.getElementById('logicControls').classList.add('show');
@@ -615,60 +649,160 @@ function addIncarnationFocus(iid){
  if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();updateFocusBar();renderCharacterFocus();
 }
 function renderCharacterFocus(){
- const ids=[...focusAppearanceIds].filter(id=>byId[id]);
- const mobile=window.innerWidth<=700,nodeW=mobile?96:170,gapX=mobile?18:34,slot=nodeW+gapX,rowGap=mobile?142:158,topPad=76,bottomPad=145;
- ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq||byId[a].t.localeCompare(byId[b].t)});
+  const mobile=window.innerWidth<=700;
+  const nodeW=mobile?96:170, nodeHalf=nodeW/2, gapX=mobile?34:54, colStep=nodeW+gapX;
+  const rowGap=mobile?148:166, topPad=82, bottomPad=165;
 
- const byYear=new Map();
- for(const id of ids){const k=temporalKey(id);if(!byYear.has(k.year))byYear.set(k.year,[]);byYear.get(k.year).push(id)}
- const years=[...byYear.keys()].sort((a,b)=>a-b);
- const maxPerYear=Math.max(1,...years.map(y=>byYear.get(y).length));
- const w=Math.max(stage.clientWidth||window.innerWidth,120+maxPerYear*slot),center=w/2,pos={};
+  // Build one vertical branch per selected incarnation.
+  const branches=[];
+  for(const iid of focusIncarnationIds){
+    const ids=appearanceUnitsForInc(iid).filter(id=>byId[id]);
+    ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq});
+    branches.push({key:iid,label:incarnationLabel(iid),ids,color:null,type:'incarnation'});
+  }
 
- years.forEach((year,ri)=>{
-   const row=byYear.get(year).sort((a,b)=>temporalKey(a).seq-temporalKey(b).seq||byId[a].t.localeCompare(byId[b].t));
-   const rw=(row.length-1)*slot;
-   row.forEach((id,i)=>pos[id]={x:center-rw/2+i*slot,y:topPad+ri*rowGap});
- });
+  // Optional non-character context branches.
+  if(extraContextBranches.has('venom')){
+    const ids=['venom1','venom2','venom3'].filter(id=>byId[id]);
+    ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq});
+    branches.push({key:'venom',label:'Venom-Verse',ids,color:universes.venom?.color||'#b46cff',type:'context'});
+  }
 
- const siblings=characterIncarnations(focusCharacterId).filter(i=>!focusIncarnationIds.has(i["Incarnation ID"]));
- const gy=topPad+Math.max(0,years.length-1)*rowGap+rowGap,gateways=[];
- siblings.slice(0,6).forEach((inc,i)=>{const iid=inc["Incarnation ID"],gid="__inc__"+iid;pos[gid]={x:center+((i%3)-1)*slot,y:gy+Math.floor(i/3)*rowGap};gateways.push({id:gid,iid})});
- const h=gy+Math.ceil(Math.max(1,siblings.length)/3)*rowGap+bottomPad;
+  // Determine visible IDs under AND/OR vs AND.
+  let visibleIds=new Set();
+  if(characterLogic==='intersection' && focusIncarnationIds.size>1){
+    const sets=[...focusIncarnationIds].map(iid=>new Set(appearanceUnitsForInc(iid)));
+    visibleIds=new Set([...sets[0]].filter(id=>sets.slice(1).every(s=>s.has(id))));
+    // context branches remain visible independently when added
+    for(const b of branches.filter(b=>b.type==='context'))for(const id of b.ids)visibleIds.add(id);
+  }else{
+    for(const b of branches)for(const id of b.ids)visibleIds.add(id);
+  }
 
- canvas.style.width=w+'px';canvas.style.height=h+'px';svg.setAttribute('width',w);svg.setAttribute('height',h);nodesEl.innerHTML='';svg.innerHTML='';
+  const ids=[...visibleIds].filter(id=>byId[id]);
+  const years=[...new Set(ids.map(id=>temporalKey(id).year))].sort((a,b)=>a-b);
+  const yearIndex=new Map(years.map((y,i)=>[y,i]));
 
- // explicit year guides
- years.forEach((year,ri)=>{
-   const y=topPad+ri*rowGap;
-   const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
-   const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.textContent=String(year);nodesEl.appendChild(lab);
- });
+  // Fixed columns preserve franchise/incarnation identity.
+  const cols=Math.max(1,branches.length);
+  const w=Math.max(stage.clientWidth||window.innerWidth,120+(cols-1)*colStep+nodeW+120);
+  const center=w/2;
+  const xByBranch=new Map();
+  branches.forEach((b,i)=>xByBranch.set(b.key,center+(i-(cols-1)/2)*colStep));
 
- // connect chronologically left-to-right within each year, then downward to next year.
- let ordered=[...ids];
- for(let i=1;i<ordered.length;i++){
-   const a=pos[ordered[i-1]],b=pos[ordered[i]],p=document.createElementNS('http://www.w3.org/2000/svg','path'),mid=(a.y+b.y)/2,c=universes[byId[ordered[i-1]].u]?.color||'#9aa3ad';
-   p.setAttribute('d',Math.abs(a.y-b.y)<2?`M ${a.x+48} ${a.y} L ${b.x-48} ${b.y}`:(Math.abs(a.x-b.x)<2?`M ${a.x} ${a.y+48} L ${b.x} ${b.y-48}`:`M ${a.x} ${a.y+48} C ${a.x} ${mid},${b.x} ${mid},${b.x} ${b.y-48}`));
-   p.style.stroke=c;p.style.strokeWidth='4px';p.style.opacity='.82';svg.appendChild(p);
- }
+  const pos={};
+  const memberships=new Map();
+  for(const b of branches){
+    for(const id of b.ids){
+      if(!visibleIds.has(id))continue;
+      if(!memberships.has(id))memberships.set(id,[]);
+      memberships.get(id).push(b.key);
+    }
+  }
 
- for(const id of ids){
-   const n=byId[id],u=universes[n.u],el=document.createElement('div');el.className='node'+(id===current?' selected':'');
-   el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';el.style.borderColor=u.color;
-   el.innerHTML=`<div class=title>${n.t}</div><div class=year>${temporalKey(id).year}</div><div class=badge>${u.name}</div>`;
-   el.onclick=()=>{current=id;renderCharacterFocus()};nodesEl.appendChild(el)
- }
+  // Shared titles (e.g. No Way Home) sit at average of participating Peter branches.
+  for(const id of ids){
+    const keys=memberships.get(id)||[];
+    const xs=keys.map(k=>xByBranch.get(k)).filter(x=>Number.isFinite(x));
+    const x=xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:center;
+    const yi=yearIndex.get(temporalKey(id).year)||0;
+    pos[id]={x,y:topPad+yi*rowGap};
+  }
 
- for(const g of gateways){
-   const el=document.createElement('div');el.className='node gatewayNode contextGateway';el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';
-   el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;
-   el.onclick=()=>addIncarnationFocus(g.iid);nodesEl.appendChild(el)
- }
+  // Gateways for other Peter Parker incarnations not yet selected.
+  const siblings=characterIncarnations(focusCharacterId).filter(i=>!focusIncarnationIds.has(i["Incarnation ID"]));
+  const gateways=[];
+  const gatewayY=topPad+years.length*rowGap+rowGap*.35;
+  siblings.slice(0,6).forEach((inc,i)=>{
+    const iid=inc["Incarnation ID"],gid="__inc__"+iid;
+    pos[gid]={x:center+((i%3)-1)*colStep,y:gatewayY+Math.floor(i/3)*rowGap};
+    gateways.push({id:gid,iid,type:'inc'});
+  });
 
- stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);stage.scrollTop=0;
+  // Peter Parker view gets an explicit Venom-Verse context gateway.
+  const characterName=normalizedCharacterName(focusCharacterId);
+  if(characterName==='peter parker' && !extraContextBranches.has('venom')){
+    const gid='__context__venom';
+    pos[gid]={x:center,y:gatewayY+Math.ceil(Math.max(1,siblings.length)/3)*rowGap};
+    gateways.push({id:gid,type:'venom'});
+  }
+
+  const h=(gateways.length?Math.max(...gateways.map(g=>pos[g.id].y)):topPad+(years.length-1)*rowGap)+bottomPad;
+  canvas.style.width=w+'px';canvas.style.height=h+'px';
+  svg.setAttribute('width',w);svg.setAttribute('height',h);
+  nodesEl.innerHTML='';svg.innerHTML='';
+
+  // Year rules.
+  years.forEach((year,ri)=>{
+    const y=topPad+ri*rowGap;
+    const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
+    const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.textContent=String(year);nodesEl.appendChild(lab);
+  });
+
+  // Branch labels.
+  for(const b of branches){
+    const lab=document.createElement('div');lab.className='branchLabel';
+    lab.style.left=xByBranch.get(b.key)+'px';lab.textContent=b.label;nodesEl.appendChild(lab);
+  }
+
+  // Orthogonal connectors: vertical within branch; shared target connects with vertical-then-horizontal elbow.
+  for(const b of branches){
+    const branchIds=b.ids.filter(id=>visibleIds.has(id)&&pos[id]).sort((a,bid)=>{
+      const ka=temporalKey(a),kb=temporalKey(bid);return ka.year-kb.year||ka.seq-kb.seq;
+    });
+    for(let i=1;i<branchIds.length;i++){
+      const from=branchIds[i-1],to=branchIds[i],a=pos[from],z=pos[to];
+      const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      const color=b.color||universes[byId[from]?.u]?.color||'#9aa3ad';
+      let d;
+      if(Math.abs(a.x-z.x)<2){
+        d=`M ${a.x} ${a.y+48} L ${z.x} ${z.y-48}`;
+      }else{
+        // travel vertically first, then horizontally into the destination row
+        const elbowY=z.y-62;
+        d=`M ${a.x} ${a.y+48} L ${a.x} ${elbowY} L ${z.x} ${elbowY} L ${z.x} ${z.y-48}`;
+      }
+      path.setAttribute('d',d);path.setAttribute('class','edge orthogonal');
+      path.style.stroke=color;path.style.strokeWidth='4px';path.style.opacity='.86';
+      svg.appendChild(path);
+    }
+  }
+
+  // Venom contextual bridge to No Way Home, if both visible.
+  if(extraContextBranches.has('venom') && pos['venom2'] && pos['nwh']){
+    const a=pos['venom2'],z=pos['nwh'],path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    const elbowY=z.y-72;
+    path.setAttribute('d',`M ${a.x} ${a.y+48} L ${a.x} ${elbowY} L ${z.x} ${elbowY} L ${z.x} ${z.y-48}`);
+    path.setAttribute('class','edge orthogonal reference');path.style.stroke=universes.venom?.color||'#b46cff';path.style.strokeWidth='4px';path.style.opacity='.6';svg.appendChild(path);
+  }
+
+  // Nodes.
+  for(const id of ids){
+    const n=byId[id],u=universes[n.u],el=document.createElement('div');
+    el.className='node'+(id===current?' selected':'');
+    el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';el.style.borderColor=u.color;
+    el.innerHTML=`<div class=title>${n.t}</div><div class=year>${temporalKey(id).year}</div><div class=badge>${u.name}</div>`;
+    el.onclick=()=>{current=id;renderCharacterFocus()};nodesEl.appendChild(el);
+  }
+
+  // Gateways.
+  for(const g of gateways){
+    const el=document.createElement('div');el.className='node gatewayNode contextGateway';
+    el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';
+    if(g.type==='inc'){
+      el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;
+      el.onclick=()=>addIncarnationFocus(g.iid);
+    }else{
+      el.innerHTML=`<div class=title>+ Venom-Verse</div><div class=badge>3 related films</div>`;
+      el.onclick=()=>{extraContextBranches.add('venom');renderCharacterFocus()};
+    }
+    nodesEl.appendChild(el);
+  }
+
+  updateFocusBar();
+  stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);stage.scrollTop=0;
 }
-function select(id){focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
+function select(id){extraContextBranches.clear();focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
 document.getElementById('allBtn').onclick=showAll;
 document.getElementById('headerAllBtn').onclick=showAll;
