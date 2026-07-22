@@ -24,7 +24,7 @@ h2{font-size:13px;text-transform:uppercase;letter-spacing:.14em;color:#95a3b8;ma
 .legendItem{display:flex;align-items:center;gap:10px;margin:8px 0;color:#d4d9e2;font-size:13px}.swatch{width:13px;height:13px;border-radius:50%;box-shadow:0 0 12px currentColor;background:currentColor}
 button{border:1px solid #2b3850;background:#121a29;color:white;border-radius:10px;padding:9px 11px;cursor:pointer}button:hover{background:#1a2538}.btnrow{display:flex;gap:8px;flex-wrap:wrap}
 #stage{position:relative;overflow:auto;overscroll-behavior:contain;background-image:linear-gradient(#19213122 1px,transparent 1px),linear-gradient(90deg,#19213122 1px,transparent 1px);background-size:40px 40px;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}#canvas{position:relative;min-width:100%;min-height:100%}
-svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;stroke-width:2;opacity:.58}.edge.required{stroke:#e7edf6;opacity:.8}.edge.reference{stroke-dasharray:7 8;opacity:.45}
+svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;stroke-width:4;opacity:.58}.edge.required{stroke:#e7edf6;opacity:.8}.edge.reference{stroke-dasharray:7 8;opacity:.45}
 .node{position:absolute;width:170px;min-height:72px;padding:11px 12px;border-radius:13px;background:#0d1320;border:1px solid #263146;transform:translate(-50%,-50%);cursor:pointer;transition:.16s ease;box-shadow:0 5px 18px #0008}
 .node:hover{transform:translate(-50%,-50%) scale(1.03);z-index:10}.node.selected{outline:3px solid white;z-index:11;box-shadow:0 0 0 4px #ffffff18,0 0 34px #fff5!important}.node.dimmed{opacity:.11;filter:saturate(.2);pointer-events:auto}.node.ancestorNode{opacity:1}.node .title{font-weight:800;font-size:13px;line-height:1.2}.node .year{font-size:11px;color:#a7b2c3;margin-top:5px}.node .badge{display:inline-block;margin-top:7px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:999px;background:#ffffff12;color:#dbe3ef}
 .empty{color:#8d9aad;font-size:14px;line-height:1.5}.ancestorList{font-size:13px}.ancestor{padding:9px 0;border-bottom:1px solid #202a38}.ancestor b{display:block}.ancestor span{color:#8795a8;font-size:11px}
@@ -61,7 +61,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v014</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v015</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -274,7 +274,9 @@ function render(){
       path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));
       const sourceColor=universes[byId[p]?.u]?.color || '#9aa3ad';
       path.setAttribute('stroke',sourceColor);
+      path.setAttribute('stroke-width','4');
       path.style.stroke=sourceColor;
+      path.style.strokeWidth='4px';
       path.style.opacity=n.edge==='reference'?'.55':'.9';
       svg.appendChild(path);
     }
@@ -293,19 +295,28 @@ function render(){
 }
 function focusSelected(){
   if(!current)return;
-  requestAnimationFrame(()=>{
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
     const el=nodesEl.querySelector('.node.selected');if(!el)return;
-    const top=Math.max(0,el.offsetTop-stage.clientHeight+120);
-    const left=Math.max(0,el.offsetLeft-stage.clientWidth/2+el.offsetWidth/2);
-    stage.scrollTo({top,left,behavior:'smooth'});
-  });
+    const desiredTop=Math.max(0,el.offsetTop-stage.clientHeight+120);
+    const desiredLeft=el.offsetLeft-(stage.clientWidth-el.offsetWidth)/2;
+    const maxLeft=Math.max(0,stage.scrollWidth-stage.clientWidth);
+    const left=Math.max(0,Math.min(maxLeft,desiredLeft));
+    stage.scrollTo({top:desiredTop,left,behavior:'auto'});
+  }));
 }
 function select(id){current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y} · ${u.name}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
 document.getElementById('allBtn').onclick=showAll;
 document.getElementById('headerAllBtn').onclick=showAll;
 document.getElementById('fitBtn').onclick=()=>focusSelected();
-window.addEventListener('resize',()=>{render();if(current)focusSelected()});
+let lastLayoutWidth=window.innerWidth;
+window.addEventListener('resize',()=>{
+  const newWidth=window.innerWidth;
+  if(Math.abs(newWidth-lastLayoutWidth)<2)return;
+  lastLayoutWidth=newWidth;
+  render();
+  if(current)focusSelected();
+});
 const search=document.getElementById('search'),results=document.getElementById('results');search.oninput=()=>{const q=search.value.toLowerCase().trim();if(!q){results.style.display='none';return}const m=titles.filter(x=>x.t.toLowerCase().includes(q)).slice(0,12);results.innerHTML=m.map(x=>`<div class=result data-id=${x.id}>${x.t}<small>${x.y} · ${universes[x.u].name}</small></div>`).join('');results.style.display=m.length?'block':'none';[...results.children].forEach(el=>el.onclick=()=>{select(el.dataset.id);search.value=byId[el.dataset.id].t;results.style.display='none'})};
 search.addEventListener('keydown',e=>{if(e.key==='Enter'){const first=results.querySelector('.result');if(first){e.preventDefault();first.click()}}});
 document.addEventListener('click',e=>{if(!e.target.closest('.searchWrap'))results.style.display='none'});
