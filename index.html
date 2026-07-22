@@ -161,6 +161,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   position:absolute;left:8px;font-size:9px;color:#6f7f94;letter-spacing:.08em;
   transform:translateY(-50%);pointer-events:none
 }
+.yearLabel.right{left:auto;right:8px}
 .yearRule{
   position:absolute;left:0;right:0;height:1px;background:#192335;pointer-events:none
 }
@@ -200,7 +201,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v024 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v025 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -590,12 +591,15 @@ function updateFocusBar(){
  const bar=document.getElementById('focusBar');if(focusMode!=='character'){bar.classList.remove('show');return}
  bar.classList.add('show');document.getElementById('focusEyebrow').textContent='Character view';
  const labels=[...focusIncarnationIds].map(incarnationLabel),ch=characterById[focusCharacterId];
+ if(extraContextBranches.has('venom'))labels.push('Venom (Tom Hardy)');
  let titleText='';
  if(labels.length===1)titleText=`${labels[0]} appears in`;
  else if(characterLogic==='intersection')titleText=`${labels.join(' AND ')} appear together in`;
  else titleText=`${labels.join(' AND/OR ')} appear in`;
  document.getElementById('focusTitle').textContent=titleText;
- document.getElementById('focusSub').textContent=`${focusAppearanceIds.size} matching title${focusAppearanceIds.size===1?'':'s'} · ${viewingMode==='minimum'?'Lite':viewingMode==='standard'?'Recommended':'Expanded'}`;
+ const contextCount=extraContextBranches.has('venom')?['venom1','venom2','venom3'].filter(id=>byId[id]).length:0;
+ const visibleCount=focusAppearanceIds.size+contextCount;
+ document.getElementById('focusSub').textContent=`${visibleCount} matching title${visibleCount===1?'':'s'} · Character view`;
  document.getElementById('focusChips').innerHTML=labels.map(x=>`<span class="focusChip">${x}</span>`).join('');
 }
 
@@ -670,7 +674,7 @@ function renderCharacterFocus(){
   if(extraContextBranches.has('venom')){
     const ids=['venom1','venom2','venom3'].filter(id=>byId[id]);
     ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq});
-    branches.push({key:'venom',label:'Venom-Verse',ids,color:universes.venom?.color||'#b46cff',type:'context'});
+    branches.push({key:'venom',label:'Venom (Tom Hardy)',ids,color:universes.venom?.color||'#b46cff',type:'context'});
   }
 
   let visibleIds=new Set();
@@ -784,6 +788,7 @@ function renderCharacterFocus(){
     const y=topPad+ri*rowGap;
     const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
     const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.textContent=String(year);nodesEl.appendChild(lab);
+    const labR=document.createElement('div');labR.className='yearLabel right';labR.style.top=y+'px';labR.textContent=String(year);nodesEl.appendChild(labR);
   });
 
   for(const b of branches){
@@ -795,14 +800,16 @@ function renderCharacterFocus(){
     if(!a||!z)return;
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
     let d;
+    const portX=z.x+(opts.targetPortOffset||0);
     if(Math.abs(a.y-z.y)<2){
       const left=a.x<=z.x?a:z,right=a.x<=z.x?z:a;
       d=`M ${left.x+nodeHalf} ${left.y} L ${right.x-nodeHalf} ${right.y}`;
-    }else if(Math.abs(a.x-z.x)<2){
-      d=`M ${a.x} ${a.y+48} L ${z.x} ${z.y-48}`;
+    }else if(Math.abs(a.x-portX)<2){
+      d=`M ${a.x} ${a.y+48} L ${portX} ${z.y-48}`;
     }else{
       const elbowY=z.y-(opts.laneOffset??64);
-      d=`M ${a.x} ${a.y+48} L ${a.x} ${elbowY} L ${z.x} ${elbowY} L ${z.x} ${z.y-48}`;
+      // Each shared-arrival line gets its own vertical target lane/port.
+      d=`M ${a.x} ${a.y+48} L ${a.x} ${elbowY} L ${portX} ${elbowY} L ${portX} ${z.y-48}`;
     }
     path.setAttribute('d',d);path.setAttribute('class','edge orthogonal'+(opts.reference?' reference':''));
     path.style.stroke=color;path.style.strokeWidth='4px';path.style.opacity=opts.opacity??'.88';
@@ -823,20 +830,24 @@ function renderCharacterFocus(){
     for(let i=1;i<branchIds.length;i++){
       const from=branchIds[i-1],to=branchIds[i];
       const color=b.color||universes[byId[from]?.u]?.color||'#9aa3ad';
-      let laneOffset=64;
+      let laneOffset=64,targetPortOffset=0;
       if(sharedArrivalIndex.has(to)){
         const lane=sharedArrivalIndex.get(to);
-        laneOffset=58+lane*10; // adjacent parallel approach lanes
+        const total=(memberships.get(to)||[]).length + (extraContextBranches.has('venom')&&to==='nwh'?1:0);
+        targetPortOffset=(lane-(total-1)/2)*10; // parallel vertical ports at the top of crossover node
+        laneOffset=58+lane*10;                 // parallel horizontal approach lanes
         sharedArrivalIndex.set(to,lane+1);
       }
-      drawOrthogonal(pos[from],pos[to],color,{laneOffset});
+      drawOrthogonal(pos[from],pos[to],color,{laneOffset,targetPortOffset});
     }
   }
 
   // Venom contextual bridge joins the same shared-target lane family.
   if(extraContextBranches.has('venom') && pos['venom2'] && pos['nwh']){
     const lane=sharedArrivalIndex.get('nwh')||0;
-    drawOrthogonal(pos['venom2'],pos['nwh'],universes.venom?.color||'#b46cff',{opacity:'.78',laneOffset:58+lane*10});
+    const total=(memberships.get('nwh')||[]).length+1;
+    const targetPortOffset=(lane-(total-1)/2)*10;
+    drawOrthogonal(pos['venom2'],pos['nwh'],universes.venom?.color||'#b46cff',{opacity:'.78',laneOffset:58+lane*10,targetPortOffset});
     sharedArrivalIndex.set('nwh',lane+1);
   }
 
@@ -855,7 +866,7 @@ function renderCharacterFocus(){
       el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;
       el.onclick=()=>addIncarnationFocus(g.iid);
     }else{
-      el.innerHTML=`<div class=title>+ Venom-Verse</div><div class=badge>3 related films</div>`;
+      el.innerHTML=`<div class=title>+ Venom (Tom Hardy)</div><div class=badge>3 direct appearances</div>`;
       el.onclick=()=>{extraContextBranches.add('venom');renderCharacterFocus()};
     }
     nodesEl.appendChild(el);
