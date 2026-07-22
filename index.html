@@ -47,22 +47,23 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 }
 </style>
 
+
 <style>
-/* v012 visual refinement: bold franchise borders, thinner white selection ring */
+/* v013: franchise color dominates; selection is a thin white accent */
 .node{
-  border-width:4px !important;
+  border-width:5px !important;
 }
 .node.selected{
-  border-width:4px !important;
-  outline:2px solid #fff !important;
-  outline-offset:2px !important;
+  border-width:5px !important;
+  outline:1px solid #fff !important;
+  outline-offset:1px !important;
 }
 </style>
 
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v012</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v013</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -260,13 +261,20 @@ function render(){
   canvas.style.width=selected.w+'px';canvas.style.height=selected.h+'px';
   svg.setAttribute('width',selected.w);svg.setAttribute('height',selected.h);
   nodesEl.innerHTML='';
-  // v012: ancestry lines inherit the source/parent title's franchise color.
+  // v013: force every visible connector to the source/parent franchise color.
   requestAnimationFrame(()=>{
-    edgesEl.querySelectorAll('path[data-from]').forEach(path=>{
-      const from=path.dataset.from;
-      if(byId[from]) path.setAttribute('stroke',universes[byId[from].u]?.color||'#9aa3ad');
+    const paths=[...edgesEl.querySelectorAll('path')];
+    paths.forEach((path,i)=>{
+      const from=path.dataset.from || (typeof edges!=='undefined' && edges[i] ? edges[i].from : null);
+      if(from && byId[from]){
+        const c=universes[byId[from].u]?.color || '#9aa3ad';
+        path.setAttribute('stroke',c);
+        path.style.stroke=c;
+      }
     });
   });
+
+});
 svg.innerHTML='';
 
   for(const n of titles){
