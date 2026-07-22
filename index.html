@@ -49,7 +49,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v010</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v011</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -160,112 +160,84 @@ function fullLayout(){
 
 function ancestryLayout(selectedId){
   const anc=ancestorsOf(selectedId,new Set());anc.add(selectedId);
+  const gens=generationMap(selectedId);
   const spine=longestPath(selectedId),spineSet=new Set(spine);
   const mobile=window.innerWidth<=700;
-  const w=Math.max(300,stage.clientWidth||window.innerWidth);
-  const center=w/2;
+
+  // Group every visible ancestor by generation above the selected title.
+  const groups={};
+  for(const id of anc){
+    const g=gens[id]??0;
+    (groups[g]??=[]).push(id);
+  }
+  const maxG=Math.max(...Object.values(gens));
+
   const nodeW=mobile?96:170;
-  const edgePad=mobile?12:70;
-  const leftX=edgePad+nodeW/2;
-  const rightX=w-edgePad-nodeW/2;
+  const gapX=mobile?18:34;
+  const slot=nodeW+gapX;
   const gapY=mobile?132:155;
   const topPad=mobile?80:110;
   const bottomPad=mobile?90:120;
+  const sidePad=mobile?18:70;
+
+  // Width grows only when a generation actually needs more room.
+  // This prevents overlap while keeping small trees phone-sized.
+  let maxRow=1;
+  for(const arr of Object.values(groups))maxRow=Math.max(maxRow,arr.length);
+  const viewport=Math.max(300,stage.clientWidth||window.innerWidth);
+  const needed=sidePad*2+maxRow*nodeW+Math.max(0,maxRow-1)*gapX;
+  const w=Math.max(viewport,needed);
+  const center=w/2;
   const pos={};
 
-  // Deepest chain is always centered and vertically stacked.
-  spine.forEach((id,i)=>pos[id]={x:center,y:topPad+i*gapY});
-
-  // Every non-spine parent hanging from a spine node becomes a side branch.
-  const branches=[];
-  for(let i=1;i<spine.length;i++){
-    const child=spine[i],mainParent=spine[i-1];
-    for(const p of byId[child]?.p||[]){
-      if(p===mainParent||spineSet.has(p))continue;
-      const members=new Set();
-      (function collect(id){
-        if(spineSet.has(id)||members.has(id))return;
-        members.add(id);
-        for(const pp of byId[id]?.p||[])collect(pp);
-      })(p);
-      branches.push({root:p,attach:child,members});
-    }
+  // Measure how much ancestry sits above each node. Deeper side branches
+  // stay nearer the center; shorter branches are pushed farther outward.
+  const depthMemo={};
+  function upstreamDepth(id){
+    if(depthMemo[id]!=null)return depthMemo[id];
+    const ps=(byId[id]?.p||[]).filter(p=>anc.has(p));
+    return depthMemo[id]=ps.length?1+Math.max(...ps.map(upstreamDepth)):0;
   }
 
-  // Also catch unusual side ancestry that reaches the selected graph through a
-  // non-spine node rather than directly through the spine.
-  const claimed=new Set(spine);
-  for(const b of branches)for(const id of b.members)claimed.add(id);
-  for(const id of anc){
-    if(claimed.has(id))continue;
-    branches.push({root:id,attach:selectedId,members:new Set([id])});
-    claimed.add(id);
-  }
+  for(let g=maxG;g>=0;g--){
+    const row=(groups[g]||[]).slice();
+    const spineId=row.find(id=>spineSet.has(id))||null;
+    const others=row.filter(id=>id!==spineId);
 
-  // Build each side branch as its own short vertical ancestry line.
-  // Alternate left/right and stagger branch blocks so cards never overlap.
-  let leftBottom=-Infinity,rightBottom=-Infinity;
-  branches.sort((a,b)=>{
-    const ay=pos[a.attach]?.y||0,by=pos[b.attach]?.y||0;
-    return ay-by || (b.members.size-a.members.size);
-  });
+    others.sort((a,b)=>{
+      const d=upstreamDepth(b)-upstreamDepth(a);
+      if(d)return d;
+      return byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t);
+    });
 
-  branches.forEach((br,idx)=>{
-    const side = leftBottom<=rightBottom ? 'left' : 'right';
-    const x=side==='left'?leftX:rightX;
-    const attachY=pos[br.attach]?.y ?? pos[selectedId].y;
+    const y=topPad+(maxG-g)*gapY;
 
-    // Local generations: branch root is nearest the attachment; its ancestors stack above it.
-    const g={[br.root]:0},q=[br.root];
-    while(q.length){
-      const id=q.shift(),gg=g[id];
-      for(const p of byId[id]?.p||[]){
-        if(!br.members.has(p))continue;
-        if(g[p]==null||g[p]<gg+1){g[p]=gg+1;q.push(p)}
-      }
-    }
-    const groups={};
-    for(const id of br.members){
-      const gg=g[id]??0;(groups[gg]??=[]).push(id);
-    }
-    Object.values(groups).forEach(a=>a.sort((aa,bb)=>byId[aa].y-byId[bb].y||byId[aa].t.localeCompare(byId[bb].t)));
-    const depth=Math.max(0,...Object.values(g));
+    if(spineId){
+      pos[spineId]={x:center,y};
 
-    let blockTop=attachY-(depth+1)*gapY;
-    let blockBottom=attachY-gapY;
-
-    // If another branch already occupies this side at the same heights,
-    // move this branch upward as a unit. More vertical scrolling is preferable
-    // to unreadable overlap.
-    const occupiedBottom=side==='left'?leftBottom:rightBottom;
-    if(blockTop<=occupiedBottom+20){
-      const shift=(occupiedBottom+20)-blockTop;
-      blockTop-=shift;
-      blockBottom-=shift;
-    }
-
-    for(let gg=0;gg<=depth;gg++){
-      const arr=groups[gg]||[];
-      // Multiple nodes at the same branch generation are staggered vertically
-      // in the same side lane rather than overlapping horizontally.
-      arr.forEach((id,j)=>{
-        const y=blockBottom-gg*gapY-j*(mobile?104:118);
-        pos[id]={x,y};
+      // Longest side branches hug the center; shorter ones fan outward.
+      let leftStep=1,rightStep=1;
+      others.forEach((id,i)=>{
+        if(i%2===0){
+          pos[id]={x:center-leftStep*slot,y};
+          leftStep++;
+        }else{
+          pos[id]={x:center+rightStep*slot,y};
+          rightStep++;
+        }
       });
+    }else{
+      // A generation without a spine node is centered as a complete row.
+      const rowWidth=row.length*nodeW+Math.max(0,row.length-1)*gapX;
+      const start=center-rowWidth/2+nodeW/2;
+      row.forEach((id,i)=>pos[id]={x:start+i*slot,y});
     }
-    const actualBottom=Math.max(...[...br.members].map(id=>pos[id]?.y||-Infinity));
-    if(side==='left')leftBottom=actualBottom; else rightBottom=actualBottom;
-  });
-
-  // Normalize if any side branch was pushed above the top.
-  const minY=Math.min(...Object.values(pos).map(p=>p.y));
-  if(minY<topPad){
-    const shift=topPad-minY;
-    for(const p of Object.values(pos))p.y+=shift;
   }
 
-  const maxY=Math.max(...Object.values(pos).map(p=>p.y));
-  return {pos,w,h:maxY+bottomPad,anc,spineSet};
+  // Selected title is always the centered bottom point of the tree.
+  pos[selectedId]={x:center,y:topPad+maxG*gapY};
+
+  return {pos,w,h:pos[selectedId].y+bottomPad,anc,spineSet};
 }
 function render(){
   const selected=current?ancestryLayout(current):fullLayout();
@@ -302,7 +274,15 @@ function render(){
     el.onclick=()=>select(n.id);nodesEl.appendChild(el);
   }
 }
-function focusSelected(){if(!current)return;requestAnimationFrame(()=>{const el=nodesEl.querySelector('.node.selected');if(!el)return;const top=Math.max(0,el.offsetTop-stage.clientHeight+120);stage.scrollTo({top,left:0,behavior:'smooth'})})}
+function focusSelected(){
+  if(!current)return;
+  requestAnimationFrame(()=>{
+    const el=nodesEl.querySelector('.node.selected');if(!el)return;
+    const top=Math.max(0,el.offsetTop-stage.clientHeight+120);
+    const left=Math.max(0,el.offsetLeft-stage.clientWidth/2+el.offsetWidth/2);
+    stage.scrollTo({top,left,behavior:'smooth'});
+  });
+}
 function select(id){current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y} · ${u.name}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
 document.getElementById('allBtn').onclick=showAll;
