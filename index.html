@@ -210,10 +210,37 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 .focusCopy{width:100%}
 .focusChips{display:none !important}
 </style>
+
+<style>
+/* v027 robust year gutters */
+#stage{position:relative}
+.yearEdgeGutter{
+  position:sticky;
+  top:0;
+  width:100%;
+  height:0;
+  z-index:20;
+  pointer-events:none;
+}
+.yearLabelFixed{
+  position:absolute;
+  font-size:9px;
+  color:#6f7f94;
+  letter-spacing:.08em;
+  padding:2px 4px;
+  background:#080d15e6;
+  border-radius:4px;
+  transform:translateY(-50%);
+  pointer-events:none;
+  z-index:21;
+}
+.yearLabelFixed.left{left:6px}
+.yearLabelFixed.right{right:6px}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v026 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v027 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -269,7 +296,8 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   <h2>Universe colors</h2><div id="legend"></div>
   <h2>Connection rules</h2><div class="note">Solid lines = prerequisite continuity. Dashed lines = meaningful reference/context. A title enters the web only through an on-screen continuity path.</div>
 </aside>
-<section id="stage"><div id="canvas"><svg id="edges"></svg><div id="nodes"></div></div></section>
+<section id="stage">
+<div id="yearEdgeGutter" class="yearEdgeGutter"></div><div id="canvas"><svg id="edges"></svg><div id="nodes"></div></div></section>
 <aside class="right">
   <h2>Required ancestry</h2><div id="ancestors" class="ancestorList"><div class="empty">Nothing selected.</div></div>
   <h2>Viewing modes</h2><div class="card note"><span class="pill">Minimum</span> direct essentials only<br><span class="pill">Full context</span> strong prerequisites<br><span class="pill">Completionist</span> every ancestor in the connected graph</div>
@@ -599,7 +627,18 @@ function focusSelected(){
   }));
 }
 
+
+function clearCharacterSearch(){
+  const s=document.getElementById('search');
+  if(s){
+    s.value='';
+    s.setAttribute('value','');
+    s.placeholder='Search for another Marvel character';
+    try{s.blur()}catch(e){}
+  }
+}
 function updateFocusBar(){
+ clearCharacterSearch();
  const bar=document.getElementById('focusBar');if(focusMode!=='character'){bar.classList.remove('show');return}
  bar.classList.add('show');document.getElementById('focusEyebrow').textContent='Character view';
  const labels=[...focusIncarnationIds].map(incarnationLabel),ch=characterById[focusCharacterId];
@@ -667,10 +706,10 @@ function enterCharacterFocus(iid){
  current=[...focusAppearanceIds].sort((a,b)=>(byId[a]?.y||0)-(byId[b]?.y||0)).slice(-1)[0]||null;
  document.getElementById('logicControls').classList.add('show');
  document.querySelectorAll('[data-logic]').forEach(b=>b.classList.toggle('active',b.dataset.logic==='union'));
- updateFocusBar();renderCharacterFocus();
+ clearCharacterSearch();updateFocusBar();renderCharacterFocus();
 }
 function addIncarnationFocus(iid){
- if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();updateFocusBar();renderCharacterFocus();
+ if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();clearCharacterSearch();updateFocusBar();renderCharacterFocus();
 }
 function renderCharacterFocus(){
   const mobile=window.innerWidth<=700;
@@ -796,11 +835,21 @@ function renderCharacterFocus(){
   svg.setAttribute('width',w);svg.setAttribute('height',h);
   nodesEl.innerHTML='';svg.innerHTML='';
 
+  const yearGutter=document.getElementById('yearEdgeGutter');
+  if(yearGutter)yearGutter.innerHTML='';
   years.forEach((year,ri)=>{
     const y=topPad+ri*rowGap;
     const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
+
+    // Canvas labels (for screenshots / full width)
     const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.style.left='8px';lab.textContent=String(year);nodesEl.appendChild(lab);
-    const labR=document.createElement('div');labR.className='yearLabel right';labR.style.top=y+'px';labR.style.left=(w-38)+'px';labR.style.right='auto';labR.textContent=String(year);nodesEl.appendChild(labR);
+    const labR=document.createElement('div');labR.className='yearLabel right';labR.style.top=y+'px';labR.style.left=(w-46)+'px';labR.style.right='auto';labR.textContent=String(year);nodesEl.appendChild(labR);
+
+    // Viewport-edge labels: always visible on both sides even after horizontal scrolling.
+    if(yearGutter){
+      const left=document.createElement('div');left.className='yearLabelFixed left';left.style.top=y+'px';left.textContent=String(year);yearGutter.appendChild(left);
+      const right=document.createElement('div');right.className='yearLabelFixed right';right.style.top=y+'px';right.textContent=String(year);yearGutter.appendChild(right);
+    }
   });
 
   for(const b of branches){
@@ -888,7 +937,7 @@ function renderCharacterFocus(){
   stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);
   stage.scrollTop=0;
 }
-function select(id){extraContextBranches.clear();focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
+function select(id){const yg=document.getElementById('yearEdgeGutter');if(yg)yg.innerHTML='';extraContextBranches.clear();focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
 document.getElementById('allBtn').onclick=showAll;
 document.getElementById('headerAllBtn').onclick=showAll;
@@ -989,6 +1038,8 @@ function latestReleasedTitle(){
 // v024 default: truly blank canvas until the user selects a character.
 focusMode='title';current=null;activeFranchises.clear();
 document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=false);
+const startupSearch=document.getElementById('search');if(startupSearch){startupSearch.value='';startupSearch.setAttribute('value','');startupSearch.placeholder='Search for a Marvel character';}
+const startupYearGutter=document.getElementById('yearEdgeGutter');if(startupYearGutter)startupYearGutter.innerHTML='';
 canvas.style.width='100%';canvas.style.height='420px';svg.innerHTML='';nodesEl.innerHTML='<div class="emptyState">Search for a Marvel character to begin.</div>';
 stage.scrollLeft=0;stage.scrollTop=0;
 
