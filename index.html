@@ -133,10 +133,29 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 .searchResults{display:none;position:absolute;z-index:75;left:18px;right:18px;top:121px;max-height:58vh;overflow:auto;background:#0c1421;border:1px solid #283650;border-radius:14px;box-shadow:0 18px 60px #000c}.searchResults.open{display:block}.searchGroupTitle{font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:#7f8da2;padding:10px 12px 5px}.searchItem{padding:10px 12px;border-top:1px solid #172235;cursor:pointer}.searchItem strong{display:block;font-size:13px}.searchItem span{font-size:10px;color:#91a0b4}.contextGateway::after{content:"Add context"}
 @media(max-width:700px){.searchResults{top:188px;left:10px;right:10px}.focusBar{padding:9px 14px}.focusTitle{font-size:14px}}
 </style>
+
+<style>
+.relevanceBar{
+  display:flex;align-items:center;gap:7px;padding:8px 16px 9px;
+  background:#080d15;border-bottom:1px solid #1d2a3a;overflow-x:auto
+}
+.relevanceLabel{font-size:9px;color:#718097;text-transform:uppercase;letter-spacing:.1em;white-space:nowrap;margin-right:2px}
+.relevanceBtn{font-size:11px;padding:7px 10px;border-radius:999px;white-space:nowrap}
+.relevanceBtn.active{background:#24334c;border-color:#8198bd;box-shadow:0 0 0 1px #8198bd55 inset}
+.logicControls{display:none;align-items:center;gap:5px;margin-left:auto;white-space:nowrap}
+.logicControls.show{display:flex}
+.logicBtn{font-size:10px;padding:6px 8px;border-radius:999px}
+.logicBtn.active{background:#24334c;border-color:#8198bd}
+@media(max-width:700px){
+ .relevanceBar{padding:7px 10px}
+ .relevanceBtn{font-size:10px;padding:6px 8px}
+ .logicControls{margin-left:4px}
+}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v019 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v020 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -147,12 +166,12 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 
 <div id="optionsBackdrop" class="optionsBackdrop"></div>
 <div id="optionsPanel" class="optionsPanel" aria-hidden="true">
-  <h3>Viewing depth</h3>
+  <div style="display:none"><h3>Viewing depth</h3>
   <div class="optionRow" id="modeControls">
     <button class="optionChip" data-mode="minimum">Minimum</button>
     <button class="optionChip active" data-mode="standard">Standard</button>
     <button class="optionChip" data-mode="expanded">Expanded</button>
-  </div>
+  </div></div>
 
   <div class="toggleRow"><span>Show selectable children below selection</span><input id="childrenToggle" type="checkbox" checked></div>
   <div class="toggleRow"><span>Keep franchises grouped in vertical lanes</span><input id="groupToggle" type="checkbox" checked></div>
@@ -163,6 +182,18 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   <button id="closeOptionsBtn" class="closeOptions">Done</button>
 </div>
 
+
+<div id="relevanceBar" class="relevanceBar">
+  <span class="relevanceLabel">View</span>
+  <button class="relevanceBtn" data-main-mode="minimum">Lite</button>
+  <button class="relevanceBtn active" data-main-mode="standard">Recommended</button>
+  <button class="relevanceBtn" data-main-mode="expanded">Expanded</button>
+  <div id="logicControls" class="logicControls">
+    <span class="relevanceLabel">Match</span>
+    <button class="logicBtn active" data-logic="union">AND/OR</button>
+    <button class="logicBtn" data-logic="intersection">AND</button>
+  </div>
+</div>
 <main>
 <aside>
   <h2>Selected title</h2><div id="selectedCard" class="card"><div class="empty">Choose a title to reveal its ancestry.</div></div>
@@ -237,15 +268,22 @@ const characterById=Object.fromEntries((WATCHWEB_PEOPLE.characters||[]).map(x=>[
 const incarnationById=Object.fromEntries((WATCHWEB_PEOPLE.incarnations||[]).map(x=>[x["Incarnation ID"],x]));
 const performerById=Object.fromEntries((WATCHWEB_PEOPLE.performers||[]).map(x=>[x["Performer ID"],x]));
 const rolesByInc=new Map();for(const r of WATCHWEB_PEOPLE.performer_roles||[]){const iid=r["Incarnation ID"];if(!iid)continue;if(!rolesByInc.has(iid))rolesByInc.set(iid,[]);rolesByInc.get(iid).push(r)}
-const appsByInc=new Map();for(const a of WATCHWEB_PEOPLE.incarnation_appearances||[]){const iid=a["Incarnation ID"];if(!iid)continue;if(!appsByInc.has(iid))appsByInc.set(iid,[]);appsByInc.get(iid).push(a["Unit ID"])}
+const appsByInc=new Map();for(const a of WATCHWEB_PEOPLE.incarnation_appearances||[]){const iid=a["Incarnation ID"];if(!iid)continue;if(!appsByInc.has(iid))appsByInc.set(iid,[]);appsByInc.get(iid).push(a["Title ID"]||a["Unit ID"])}
 function performerNameForInc(iid){const roles=rolesByInc.get(iid)||[];const names=[...new Set(roles.map(r=>performerById[r["Performer ID"]]?.["Performer Name"]).filter(Boolean))];return names[0]||"Unknown performer"}
 function incarnationLabel(iid){const inc=incarnationById[iid]||{};const ch=characterById[inc["Character ID"]]||{};return `${ch["Character Name"]||inc["Incarnation Label"]||iid} (${performerNameForInc(iid)})`}
-function characterIncarnations(cid){return (WATCHWEB_PEOPLE.incarnations||[]).filter(x=>x["Character ID"]===cid)}
+function normalizedCharacterName(cid){
+ const ch=characterById[cid]||{};
+ return String(ch["Character Name"]||"").trim().toLowerCase();
+}
+function characterIncarnations(cid){
+ const target=normalizedCharacterName(cid);
+ return (WATCHWEB_PEOPLE.incarnations||[]).filter(x=>normalizedCharacterName(x["Character ID"])===target);
+}
 function appearanceUnitsForInc(iid){return [...new Set((appsByInc.get(iid)||[]).filter(id=>byId[id]))]}
 
 let current=null,pan={x:0,y:0},scale=1;
 let viewingMode='standard',showChildren=true,groupFranchises=true;
-let focusMode='title',focusCharacterId=null,focusIncarnationIds=new Set(),focusAppearanceIds=new Set();
+let focusMode='title',focusCharacterId=null,focusIncarnationIds=new Set(),focusAppearanceIds=new Set(),characterLogic='union';
 const activeFranchises=new Set(Object.keys(universes));
 const expandedGatewayFranchises=new Set();
 
@@ -497,12 +535,36 @@ function updateFocusBar(){
  const bar=document.getElementById('focusBar');if(focusMode!=='character'){bar.classList.remove('show');return}
  bar.classList.add('show');document.getElementById('focusEyebrow').textContent='Character view';
  const labels=[...focusIncarnationIds].map(incarnationLabel),ch=characterById[focusCharacterId];
- document.getElementById('focusTitle').textContent=labels.length===1?`${labels[0]} appears in`:`${ch?.["Character Name"]||"Selected character"} appears in`;
- document.getElementById('focusSub').textContent=`${focusAppearanceIds.size} direct appearance${focusAppearanceIds.size===1?'':'s'} · ${viewingMode==='minimum'?'Core':viewingMode==='standard'?'Related':'Explore'}`;
+ let titleText='';
+ if(labels.length===1)titleText=`${labels[0]} appears in`;
+ else if(characterLogic==='intersection')titleText=`${labels.join(' AND ')} appear together in`;
+ else titleText=`${labels.join(' AND/OR ')} appear in`;
+ document.getElementById('focusTitle').textContent=titleText;
+ document.getElementById('focusSub').textContent=`${focusAppearanceIds.size} matching title${focusAppearanceIds.size===1?'':'s'} · ${viewingMode==='minimum'?'Lite':viewingMode==='standard'?'Recommended':'Expanded'}`;
  document.getElementById('focusChips').innerHTML=labels.map(x=>`<span class="focusChip">${x}</span>`).join('');
 }
-function enterCharacterFocus(iid){const inc=incarnationById[iid];if(!inc)return;focusMode='character';focusCharacterId=inc["Character ID"];focusIncarnationIds=new Set([iid]);focusAppearanceIds=new Set(appearanceUnitsForInc(iid));current=[...focusAppearanceIds].sort((a,b)=>(byId[a]?.y||0)-(byId[b]?.y||0)).slice(-1)[0]||null;updateFocusBar();renderCharacterFocus()}
-function addIncarnationFocus(iid){focusIncarnationIds.add(iid);for(const id of appearanceUnitsForInc(iid))focusAppearanceIds.add(id);updateFocusBar();renderCharacterFocus()}
+function recalcCharacterAppearances(){
+ const sets=[...focusIncarnationIds].map(iid=>new Set(appearanceUnitsForInc(iid)));
+ if(!sets.length){focusAppearanceIds=new Set();return}
+ if(characterLogic==='intersection'&&sets.length>1){
+   focusAppearanceIds=new Set([...sets[0]].filter(id=>sets.slice(1).every(s=>s.has(id))));
+ }else{
+   focusAppearanceIds=new Set();
+   for(const s of sets)for(const id of s)focusAppearanceIds.add(id);
+ }
+}
+function enterCharacterFocus(iid){
+ const inc=incarnationById[iid];if(!inc)return;
+ focusMode='character';focusCharacterId=inc["Character ID"];focusIncarnationIds=new Set([iid]);characterLogic='union';
+ recalcCharacterAppearances();
+ current=[...focusAppearanceIds].sort((a,b)=>(byId[a]?.y||0)-(byId[b]?.y||0)).slice(-1)[0]||null;
+ document.getElementById('logicControls').classList.add('show');
+ document.querySelectorAll('[data-logic]').forEach(b=>b.classList.toggle('active',b.dataset.logic==='union'));
+ updateFocusBar();renderCharacterFocus();
+}
+function addIncarnationFocus(iid){
+ if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();updateFocusBar();renderCharacterFocus();
+}
 function renderCharacterFocus(){
  const ids=[...focusAppearanceIds].filter(id=>byId[id]).sort((a,b)=>(byId[a].y||0)-(byId[b].y||0)||byId[a].t.localeCompare(byId[b].t));
  const mobile=window.innerWidth<=700,nodeW=mobile?96:170,gapX=mobile?18:34,slot=nodeW+gapX,gapY=mobile?132:150,topPad=70,bottomPad=130;
@@ -518,7 +580,7 @@ function renderCharacterFocus(){
  for(const g of gateways){const el=document.createElement('div');el.className='node gatewayNode contextGateway';el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;el.onclick=()=>addIncarnationFocus(g.iid);nodesEl.appendChild(el)}
  stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);stage.scrollTop=0;
 }
-function select(id){focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
+function select(id){focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
 document.getElementById('allBtn').onclick=showAll;
 document.getElementById('headerAllBtn').onclick=showAll;
@@ -531,7 +593,37 @@ window.addEventListener('resize',()=>{
   render();
   if(current)focusSelected();
 });
-const search=document.getElementById('search'),results=document.getElementById('results');search.oninput=()=>{const q=search.value.toLowerCase().trim();if(!q){results.style.display='none';return}const m=titles.filter(x=>x.t.toLowerCase().includes(q)).slice(0,12);results.innerHTML=m.map(x=>`<div class=result data-id=${x.id}>${x.t}<small>${x.y} · ${universes[x.u].name}</small></div>`).join('');results.style.display=m.length?'block':'none';[...results.children].forEach(el=>el.onclick=()=>{select(el.dataset.id);search.value=byId[el.dataset.id].t;results.style.display='none'})};
+const search=document.getElementById('search'),results=document.getElementById('results'),entityResults=document.getElementById('searchResults');
+search.oninput=()=>{
+ const term=search.value.trim().toLowerCase();
+ if(!term){results.style.display='none';entityResults.classList.remove('open');entityResults.innerHTML='';return}
+ const incMatches=(WATCHWEB_PEOPLE.incarnations||[]).filter(inc=>{
+   const label=incarnationLabel(inc["Incarnation ID"]).toLowerCase();
+   const raw=String(inc["Incarnation Label"]||"").toLowerCase();
+   return label.includes(term)||raw.includes(term);
+ }).slice(0,10);
+ const titleMatches=titles.filter(x=>x.t.toLowerCase().includes(term)).slice(0,10);
+ let markup='';
+ if(incMatches.length){
+   markup+='<div class="searchGroupTitle">Characters</div>';
+   for(const inc of incMatches){
+     const iid=inc["Incarnation ID"];
+     markup+=`<div class="searchItem" data-inc="${iid}"><strong>${incarnationLabel(iid)}</strong><span>${inc["Continuity / Universe"]||"Character incarnation"}</span></div>`;
+   }
+ }
+ if(titleMatches.length){
+   markup+='<div class="searchGroupTitle">Titles</div>';
+   for(const t of titleMatches)markup+=`<div class="searchItem" data-title="${t.id}"><strong>${t.t}</strong><span>${t.y||'—'} · ${universes[t.u].name}</span></div>`;
+ }
+ if(!markup)markup='<div class="searchItem"><span>No matches</span></div>';
+ entityResults.innerHTML=markup;entityResults.classList.add('open');results.style.display='none';
+ entityResults.querySelectorAll('[data-inc]').forEach(el=>el.onclick=()=>{
+   search.value=incarnationLabel(el.dataset.inc);entityResults.classList.remove('open');enterCharacterFocus(el.dataset.inc);
+ });
+ entityResults.querySelectorAll('[data-title]').forEach(el=>el.onclick=()=>{
+   search.value=byId[el.dataset.title].t;entityResults.classList.remove('open');select(el.dataset.title);
+ });
+};
 search.addEventListener('keydown',e=>{if(e.key==='Enter'){const first=results.querySelector('.result');if(first){e.preventDefault();first.click()}}});
 document.addEventListener('click',e=>{if(!e.target.closest('.searchWrap'))results.style.display='none'});
 for(const [k,u] of Object.entries(universes)){const el=document.createElement('div');el.className='legendItem';el.innerHTML=`<span class=swatch style="color:${u.color}"></span>${u.name}`;document.getElementById('legend').appendChild(el)}
@@ -548,7 +640,7 @@ document.getElementById('closeOptionsBtn').onclick=closeOptions;
 
 document.querySelectorAll('#modeControls [data-mode]').forEach(btn=>{
   btn.onclick=()=>{
-    viewingMode=btn.dataset.mode;
+    viewingMode=btn.dataset.mode;document.querySelectorAll('[data-main-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mainMode===viewingMode));
     document.querySelectorAll('#modeControls [data-mode]').forEach(b=>b.classList.toggle('active',b===btn));
     applyViewMode();if(focusMode==='character'){updateFocusBar();renderCharacterFocus()}else{render();if(current)focusSelected();}
   };
@@ -599,5 +691,22 @@ document.getElementById('headerAllBtn').onclick=()=>{
   document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=true);
   render();stage.scrollLeft=Math.max(0,(canvas.scrollWidth-stage.clientWidth)/2);stage.scrollTop=0;
 };
+
+document.querySelectorAll('[data-main-mode]').forEach(btn=>{
+ btn.onclick=()=>{
+   viewingMode=btn.dataset.mainMode;
+   document.querySelectorAll('[data-main-mode]').forEach(b=>b.classList.toggle('active',b===btn));
+   document.querySelectorAll('#modeControls [data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===viewingMode));
+   applyViewMode();
+   if(focusMode==='character'){updateFocusBar();renderCharacterFocus()}else{render();if(current)focusSelected()}
+ };
+});
+document.querySelectorAll('[data-logic]').forEach(btn=>{
+ btn.onclick=()=>{
+   characterLogic=btn.dataset.logic;
+   document.querySelectorAll('[data-logic]').forEach(b=>b.classList.toggle('active',b===btn));
+   if(focusMode==='character'){recalcCharacterAppearances();updateFocusBar();renderCharacterFocus()}
+ };
+});
 </script>
 </body></html>
