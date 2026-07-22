@@ -198,14 +198,26 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   color:#5f6f84;font-size:12px;letter-spacing:.06em;text-align:center;padding:24px;
 }
 </style>
+
+<style>
+.yearLabel{
+  z-index:8;
+  padding:2px 4px;
+  background:#080d15cc;
+  border-radius:4px;
+}
+.focusBar{padding-bottom:10px}
+.focusCopy{width:100%}
+.focusChips{display:none !important}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v025 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v026 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
-<div id="focusBar" class="focusBar"><div id="focusEyebrow" class="focusEyebrow"></div><div id="focusTitle" class="focusTitle"></div><div id="focusSub" class="focusSub"></div><div id="focusChips" class="focusChips"></div></div>
+<div id="focusBar" class="focusBar"><div id="focusEyebrow" class="focusEyebrow"></div><div id="focusTitle" class="focusTitle"></div><div id="focusSub" class="focusSub"></div></div>
 <div id="searchResults" class="searchResults"></div>
 
 <noscript><div style="padding:16px;background:#401018;color:white;font-family:system-ui">MCU Spiderweb needs JavaScript. Open this HTML file in Safari/Chrome rather than a document preview.</div></noscript>
@@ -600,7 +612,7 @@ function updateFocusBar(){
  const contextCount=extraContextBranches.has('venom')?['venom1','venom2','venom3'].filter(id=>byId[id]).length:0;
  const visibleCount=focusAppearanceIds.size+contextCount;
  document.getElementById('focusSub').textContent=`${visibleCount} matching title${visibleCount===1?'':'s'} · Character view`;
- document.getElementById('focusChips').innerHTML=labels.map(x=>`<span class="focusChip">${x}</span>`).join('');
+ 
 }
 
 const storyAnchorOverrides={
@@ -787,8 +799,8 @@ function renderCharacterFocus(){
   years.forEach((year,ri)=>{
     const y=topPad+ri*rowGap;
     const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
-    const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.textContent=String(year);nodesEl.appendChild(lab);
-    const labR=document.createElement('div');labR.className='yearLabel right';labR.style.top=y+'px';labR.textContent=String(year);nodesEl.appendChild(labR);
+    const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.style.left='8px';lab.textContent=String(year);nodesEl.appendChild(lab);
+    const labR=document.createElement('div');labR.className='yearLabel right';labR.style.top=y+'px';labR.style.left=(w-38)+'px';labR.style.right='auto';labR.textContent=String(year);nodesEl.appendChild(labR);
   });
 
   for(const b of branches){
@@ -914,10 +926,10 @@ search.oninput=()=>{
  if(!markup)markup='<div class="searchItem"><span>No matches</span></div>';
  entityResults.innerHTML=markup;entityResults.classList.add('open');results.style.display='none';
  entityResults.querySelectorAll('[data-inc]').forEach(el=>el.onclick=()=>{
-   search.value=incarnationLabel(el.dataset.inc);entityResults.classList.remove('open');enterCharacterFocus(el.dataset.inc);
+   search.value='';search.placeholder='Search for another Marvel character';entityResults.classList.remove('open');enterCharacterFocus(el.dataset.inc);
  });
  entityResults.querySelectorAll('[data-title]').forEach(el=>el.onclick=()=>{
-   search.value=byId[el.dataset.title].t;entityResults.classList.remove('open');select(el.dataset.title);
+   search.value='';entityResults.classList.remove('open');select(el.dataset.title);
  });
 };
 search.addEventListener('keydown',e=>{if(e.key==='Enter'){const first=results.querySelector('.result');if(first){e.preventDefault();first.click()}}});
