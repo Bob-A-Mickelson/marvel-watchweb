@@ -49,21 +49,19 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 
 
 <style>
-/* v013: franchise color dominates; selection is a thin white accent */
-.node{
-  border-width:5px !important;
-}
+/* v014: bold franchise border; thin white selection accent */
+.node{border-width:4px !important;}
 .node.selected{
-  border-width:5px !important;
+  border-width:4px !important;
   outline:1px solid #fff !important;
-  outline-offset:1px !important;
+  outline-offset:2px !important;
 }
 </style>
 
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v013</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v014</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -261,21 +259,7 @@ function render(){
   canvas.style.width=selected.w+'px';canvas.style.height=selected.h+'px';
   svg.setAttribute('width',selected.w);svg.setAttribute('height',selected.h);
   nodesEl.innerHTML='';
-  // v013: force every visible connector to the source/parent franchise color.
-  requestAnimationFrame(()=>{
-    const paths=[...edgesEl.querySelectorAll('path')];
-    paths.forEach((path,i)=>{
-      const from=path.dataset.from || (typeof edges!=='undefined' && edges[i] ? edges[i].from : null);
-      if(from && byId[from]){
-        const c=universes[byId[from].u]?.color || '#9aa3ad';
-        path.setAttribute('stroke',c);
-        path.style.stroke=c;
-      }
-    });
-  });
-
-});
-svg.innerHTML='';
+  svg.innerHTML='';
 
   for(const n of titles){
     if(!shown.has(n.id))continue;
@@ -288,6 +272,9 @@ svg.innerHTML='';
         ? `M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`
         : `M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
       path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));
+      const sourceColor=universes[byId[p]?.u]?.color || '#9aa3ad';
+      path.setAttribute('stroke',sourceColor);
+      path.style.stroke=sourceColor;
       path.style.opacity=n.edge==='reference'?'.55':'.9';
       svg.appendChild(path);
     }
@@ -298,6 +285,7 @@ svg.innerHTML='';
     const u=universes[n.u],el=document.createElement('div');
     el.className='node'+(n.id===current?' selected':'')+(current?' ancestorNode':'');
     el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';
+    el.style.borderColor=u.color;
     el.style.boxShadow=`0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;
     el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y}</div><div class=badge>${u.name}</div>`;
     el.onclick=()=>select(n.id);nodesEl.appendChild(el);
