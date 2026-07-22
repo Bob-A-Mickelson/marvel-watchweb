@@ -63,14 +63,67 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 .dataHealth{font-size:9px;color:#7f8da2;letter-spacing:.06em;margin-top:2px}
 @media(max-width:700px){.dataHealth{display:none}}
 </style>
+
+<style>
+/* v017 interaction + layout refinements */
+.headerActions{display:flex;gap:8px;align-items:center}
+#stage{overflow-x:auto !important;overflow-y:auto !important;scrollbar-gutter:stable both-edges}
+.node.childNode{opacity:.50}
+.node.childNode:hover{opacity:.82}
+.optionsBackdrop{position:fixed;inset:0;background:#0009;z-index:80;display:none}
+.optionsPanel{
+  position:fixed;z-index:90;right:12px;top:88px;width:min(420px,calc(100vw - 24px));
+  max-height:calc(100vh - 110px);overflow:auto;background:#0d1421;border:1px solid #2c3b53;
+  border-radius:16px;padding:14px;box-shadow:0 24px 70px #000c;display:none
+}
+.optionsPanel.open,.optionsBackdrop.open{display:block}
+.optionsPanel h3{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#9aa8ba;margin:6px 0 9px}
+.optionRow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.optionChip{font-size:12px;padding:8px 10px}
+.optionChip.active{background:#24334c;border-color:#7f96bb;box-shadow:0 0 0 1px #7f96bb55 inset}
+.toggleRow{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid #1e2a3a;font-size:13px}
+.toggleRow input{width:auto}
+.filterGrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin-top:8px}
+.filterItem{display:flex;align-items:center;gap:7px;font-size:12px;color:#dce3ed}
+.filterItem input{width:auto}
+.closeOptions{width:100%;margin-top:14px;font-weight:800}
+@media(max-width:700px){
+  header{grid-template-columns:1fr auto;grid-template-rows:auto auto}
+  .headerActions{grid-column:2;grid-row:1;gap:6px}
+  .headerActions .headerAllBtn{font-size:11px;padding:7px 8px}
+  #stage{width:100%;overflow-x:auto !important;overflow-y:auto !important;touch-action:pan-x pan-y}
+  #canvas{min-width:max-content}
+  .optionsPanel{top:132px;left:10px;right:10px;width:auto;max-height:calc(100vh - 145px)}
+}
+</style>
+
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v016 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
-  <button id="headerAllBtn" class="headerAllBtn">See All</button>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v017 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
 <noscript><div style="padding:16px;background:#401018;color:white;font-family:system-ui">MCU Spiderweb needs JavaScript. Open this HTML file in Safari/Chrome rather than a document preview.</div></noscript>
+
+<div id="optionsBackdrop" class="optionsBackdrop"></div>
+<div id="optionsPanel" class="optionsPanel" aria-hidden="true">
+  <h3>Viewing depth</h3>
+  <div class="optionRow" id="modeControls">
+    <button class="optionChip" data-mode="minimum">Minimum</button>
+    <button class="optionChip active" data-mode="standard">Standard</button>
+    <button class="optionChip" data-mode="expanded">Expanded</button>
+  </div>
+
+  <div class="toggleRow"><span>Show selectable children below selection</span><input id="childrenToggle" type="checkbox" checked></div>
+  <div class="toggleRow"><span>Keep franchises grouped in vertical lanes</span><input id="groupToggle" type="checkbox" checked></div>
+
+  <h3>Franchise filters</h3>
+  <div class="filterGrid" id="franchiseFilters"></div>
+  <button id="clearFiltersBtn" class="closeOptions">Show all franchises</button>
+  <button id="closeOptionsBtn" class="closeOptions">Done</button>
+</div>
+
 <main>
 <aside>
   <h2>Selected title</h2><div id="selectedCard" class="card"><div class="empty">Choose a title to reveal its ancestry.</div></div>
@@ -130,7 +183,8 @@ const titles=WATCHWEB_DATA.titles.map(raw=>{
     t:raw.title,
     y:Number(raw.year)||0,
     u:style.key,
-    p:required.map(e=>e.from_unit_id),
+    p:[],
+    links:required.map(e=>({id:e.from_unit_id,tier:e.necessity_tier_id||"NEC_RECOMMENDED",rel:e.relationship_type_id||"",confidence:e.confidence||""})),
     edge:required.some(e=>["NEC_ENRICH","NEC_EASTER"].includes(e.necessity_tier_id))?"reference":"required",
     format:raw.format,
     category:raw.category,
@@ -138,9 +192,27 @@ const titles=WATCHWEB_DATA.titles.map(raw=>{
     status:raw.status
   };
 });
-const byId=Object.fromEntries(titles.map(x=>[x.id,x]));let current=null,mode='all',pan={x:0,y:0},scale=1;
+const byId=Object.fromEntries(titles.map(x=>[x.id,x]));
+let current=null,pan={x:0,y:0},scale=1;
+let viewingMode='standard',showChildren=true,groupFranchises=true;
+const activeFranchises=new Set(Object.keys(universes));
 const stage=document.getElementById('stage'),canvas=document.getElementById('canvas'),nodesEl=document.getElementById('nodes'),svg=document.getElementById('edges');
+
+const tierAllow={
+  minimum:new Set(["NEC_ESSENTIAL"]),
+  standard:new Set(["NEC_ESSENTIAL","NEC_RECOMMENDED"]),
+  expanded:new Set(["NEC_ESSENTIAL","NEC_RECOMMENDED","NEC_ENRICH","NEC_EASTER"])
+};
+function applyViewMode(){
+  const allowed=tierAllow[viewingMode]||tierAllow.standard;
+  for(const n of titles)n.p=(n.links||[]).filter(l=>allowed.has(l.tier)).map(l=>l.id);
+}
+applyViewMode();
+
 function ancestorsOf(id,set=new Set()){let n=byId[id];if(!n?.p)return set;for(const p of n.p){if(!set.has(p)){set.add(p);ancestorsOf(p,set)}}return set}
+function directChildrenOf(id){
+  return titles.filter(n=>n.p?.includes(id)&&activeFranchises.has(n.u)).map(n=>n.id);
+}
 function descendantsOf(id,set=new Set()){for(const n of titles){if(n.p?.includes(id)&&!set.has(n.id)){set.add(n.id);descendantsOf(n.id,set)}}return set}
 function visibleSet(){return new Set(titles.map(x=>x.id))}
 function generationMap(selectedId){
@@ -170,98 +242,135 @@ function longestPath(id,memo={}){
 }
 
 function fullLayout(){
-  const sorted=[...titles].sort((a,b)=>a.y-b.y||a.t.localeCompare(b.t));
-  const cols=Math.max(3,Math.ceil(Math.sqrt(sorted.length)));
-  const gapX=190,gapY=118,margin=110;
+  const visible=titles.filter(n=>activeFranchises.has(n.u));
+  const familyRank={mcu:0,mcuD:1,mcuTV:2,mcuS:3,foxX:10,dd03:11,foxFF:12,blade:20,raimi:30,webb:31,spiderverse:32,venom:33,xanim:34,legacy:40,other:50};
+  const sorted=[...visible].sort((a,b)=>(familyRank[a.u]??50)-(familyRank[b.u]??50)||a.y-b.y||a.t.localeCompare(b.t));
+  const mobile=window.innerWidth<=700;
+  const cols=Math.max(4,Math.min(8,Math.ceil(Math.sqrt(sorted.length))));
+  const gapX=mobile?122:190,gapY=mobile?122:118,margin=mobile?80:110;
   const pos={}; sorted.forEach((n,i)=>{pos[n.id]={x:margin+(i%cols)*gapX,y:margin+Math.floor(i/cols)*gapY}});
   return {pos,w:margin*2+(cols-1)*gapX,h:margin*2+Math.ceil(sorted.length/cols)*gapY};
 }
-
 function ancestryLayout(selectedId){
   const anc=ancestorsOf(selectedId,new Set());anc.add(selectedId);
+  const children=showChildren?directChildrenOf(selectedId):[];
   const gens=generationMap(selectedId);
   const spine=longestPath(selectedId),spineSet=new Set(spine);
   const mobile=window.innerWidth<=700;
 
-  // Group every visible ancestor by generation above the selected title.
   const groups={};
   for(const id of anc){
     const g=gens[id]??0;
     (groups[g]??=[]).push(id);
   }
-  const maxG=Math.max(...Object.values(gens));
+  const maxG=Math.max(0,...Object.values(gens));
 
   const nodeW=mobile?96:170;
   const gapX=mobile?18:34;
   const slot=nodeW+gapX;
   const gapY=mobile?132:155;
   const topPad=mobile?80:110;
-  const bottomPad=mobile?90:120;
-  const sidePad=mobile?18:70;
+  const bottomPad=mobile?110:130;
+  const sidePad=mobile?28:70;
 
-  // Width grows only when a generation actually needs more room.
-  // This prevents overlap while keeping small trees phone-sized.
-  let maxRow=1;
-  for(const arr of Object.values(groups))maxRow=Math.max(maxRow,arr.length);
-  const viewport=Math.max(300,stage.clientWidth||window.innerWidth);
-  const needed=sidePad*2+maxRow*nodeW+Math.max(0,maxRow-1)*gapX;
-  const w=Math.max(viewport,needed);
-  const center=w/2;
   const pos={};
 
-  // Measure how much ancestry sits above each node. Deeper side branches
-  // stay nearer the center; shorter branches are pushed farther outward.
-  const depthMemo={};
-  function upstreamDepth(id){
-    if(depthMemo[id]!=null)return depthMemo[id];
-    const ps=(byId[id]?.p||[]).filter(p=>anc.has(p));
-    return depthMemo[id]=ps.length?1+Math.max(...ps.map(upstreamDepth)):0;
+  // Build stable franchise lanes so same-color branches stay together vertically.
+  const nonSpine=[...anc].filter(id=>!spineSet.has(id));
+  const laneStats=new Map();
+  for(const id of nonSpine){
+    const key=byId[id]?.u||'other';
+    if(!laneStats.has(key))laneStats.set(key,{key,count:0,maxPerGen:1,maxDepth:0});
+    const s=laneStats.get(key);s.count++;
+    s.maxDepth=Math.max(s.maxDepth,gens[id]||0);
   }
+  for(const [key,s] of laneStats){
+    let mx=1;
+    for(const row of Object.values(groups))mx=Math.max(mx,row.filter(id=>(byId[id]?.u||'other')===key&&!spineSet.has(id)).length);
+    s.maxPerGen=mx;
+  }
+
+  const familyRank={mcu:0,mcuD:1,mcuTV:2,mcuS:3,foxX:10,dd03:11,foxFF:12,blade:20,raimi:30,webb:31,spiderverse:32,venom:33,xanim:34,legacy:40,other:50};
+  let lanes=[...laneStats.values()].sort((a,b)=>{
+    if(!groupFranchises)return b.maxDepth-a.maxDepth||b.count-a.count;
+    return (familyRank[a.key]??50)-(familyRank[b.key]??50)||b.count-a.count||b.maxDepth-a.maxDepth;
+  });
+
+  const lanePlacement=new Map();
+  let leftCursor=1,rightCursor=1;
+  lanes.forEach((lane,i)=>{
+    // Keep related franchise families contiguous by stable ordering; alternate whole lane blocks, not individual nodes.
+    const width=Math.max(1,lane.maxPerGen);
+    const side=i%2===0?-1:1;
+    if(side<0){
+      const centerStep=leftCursor+(width-1)/2;
+      lanePlacement.set(lane.key,{side,centerStep,width});
+      leftCursor+=width+0.45;
+    }else{
+      const centerStep=rightCursor+(width-1)/2;
+      lanePlacement.set(lane.key,{side,centerStep,width});
+      rightCursor+=width+0.45;
+    }
+  });
+
+  const maxStep=Math.max(leftCursor,rightCursor,1);
+  const viewport=Math.max(300,stage.clientWidth||window.innerWidth);
+  const needed=sidePad*2+(maxStep*2+1)*slot;
+  const w=Math.max(viewport,needed);
+  const center=w/2;
 
   for(let g=maxG;g>=0;g--){
     const row=(groups[g]||[]).slice();
-    const spineId=row.find(id=>spineSet.has(id))||null;
-    const others=row.filter(id=>id!==spineId);
-
-    others.sort((a,b)=>{
-      const d=upstreamDepth(b)-upstreamDepth(a);
-      if(d)return d;
-      return byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t);
-    });
-
     const y=topPad+(maxG-g)*gapY;
+    const spineId=row.find(id=>spineSet.has(id))||null;
+    if(spineId)pos[spineId]={x:center,y};
 
-    if(spineId){
-      pos[spineId]={x:center,y};
-
-      // Longest side branches hug the center; shorter ones fan outward.
-      let leftStep=1,rightStep=1;
-      others.forEach((id,i)=>{
-        if(i%2===0){
-          pos[id]={x:center-leftStep*slot,y};
-          leftStep++;
-        }else{
-          pos[id]={x:center+rightStep*slot,y};
-          rightStep++;
-        }
-      });
-    }else{
-      // A generation without a spine node is centered as a complete row.
-      const rowWidth=row.length*nodeW+Math.max(0,row.length-1)*gapX;
-      const start=center-rowWidth/2+nodeW/2;
-      row.forEach((id,i)=>pos[id]={x:start+i*slot,y});
+    const byLane=new Map();
+    for(const id of row.filter(id=>id!==spineId)){
+      const key=byId[id]?.u||'other';
+      if(!byLane.has(key))byLane.set(key,[]);
+      byLane.get(key).push(id);
+    }
+    for(const [key,ids] of byLane){
+      ids.sort((a,b)=>byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t));
+      const lane=lanePlacement.get(key)||{side:1,centerStep:1,width:ids.length};
+      const laneCenter=center+lane.side*lane.centerStep*slot;
+      const rowWidth=(ids.length-1)*slot;
+      ids.forEach((id,i)=>pos[id]={x:laneCenter-rowWidth/2+i*slot,y});
     }
   }
 
-  // Selected title is always the centered bottom point of the tree.
-  pos[selectedId]={x:center,y:topPad+maxG*gapY};
+  // Selected title is always centered near the bottom.
+  const selectedY=topPad+maxG*gapY;
+  pos[selectedId]={x:center,y:selectedY};
 
-  return {pos,w,h:pos[selectedId].y+bottomPad,anc,spineSet};
+  // Direct children form a translucent selectable row beneath the selection.
+  if(children.length){
+    const ordered=[...children].sort((a,b)=>{
+      const ua=byId[a]?.u||'',ub=byId[b]?.u||'';
+      return (familyRank[ua]??50)-(familyRank[ub]??50)||byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t);
+    });
+    const rowWidth=(ordered.length-1)*slot;
+    ordered.forEach((id,i)=>pos[id]={x:center-rowWidth/2+i*slot,y:selectedY+gapY});
+  }
+
+  return {
+    pos,w,
+    h:selectedY+(children.length?gapY:0)+bottomPad,
+    anc,children:new Set(children),spineSet
+  };
 }
 function render(){
   const selected=current?ancestryLayout(current):fullLayout();
-  const pos=selected.pos, anc=selected.anc||new Set();
-  const shown=current?anc:new Set(titles.map(n=>n.id));
+  const pos=selected.pos, anc=selected.anc||new Set(), childSet=selected.children||new Set();
+
+  let shown;
+  if(current){
+    shown=new Set([...anc,...childSet].filter(id=>id===current||activeFranchises.has(byId[id]?.u)));
+    shown.add(current);
+  }else{
+    shown=new Set(titles.filter(n=>activeFranchises.has(n.u)).map(n=>n.id));
+  }
 
   canvas.style.width=selected.w+'px';canvas.style.height=selected.h+'px';
   svg.setAttribute('width',selected.w);svg.setAttribute('height',selected.h);
@@ -278,13 +387,15 @@ function render(){
       path.setAttribute('d',sameColumn
         ? `M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`
         : `M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
-      path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));
+      const link=(n.links||[]).find(l=>l.id===p);
+      const reference=link&&["NEC_ENRICH","NEC_EASTER"].includes(link.tier);
+      path.setAttribute('class','edge '+(reference?'reference':'required'));
       const sourceColor=universes[byId[p]?.u]?.color || '#9aa3ad';
       path.setAttribute('stroke',sourceColor);
       path.setAttribute('stroke-width','4');
       path.style.stroke=sourceColor;
       path.style.strokeWidth='4px';
-      path.style.opacity=n.edge==='reference'?'.55':'.9';
+      path.style.opacity=reference?'.55':'.9';
       svg.appendChild(path);
     }
   }
@@ -292,11 +403,11 @@ function render(){
   for(const n of titles){
     if(!shown.has(n.id)||!pos[n.id])continue;
     const u=universes[n.u],el=document.createElement('div');
-    el.className='node'+(n.id===current?' selected':'')+(current?' ancestorNode':'');
+    el.className='node'+(n.id===current?' selected':'')+(current&&anc.has(n.id)?' ancestorNode':'')+(childSet.has(n.id)?' childNode':'');
     el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';
     el.style.borderColor=u.color;
     el.style.boxShadow=`0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;
-    el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y}</div><div class=badge>${u.name}</div>`;
+    el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y||'—'}</div><div class=badge>${u.name}</div>`;
     el.onclick=()=>select(n.id);nodesEl.appendChild(el);
   }
 }
@@ -328,6 +439,57 @@ const search=document.getElementById('search'),results=document.getElementById('
 search.addEventListener('keydown',e=>{if(e.key==='Enter'){const first=results.querySelector('.result');if(first){e.preventDefault();first.click()}}});
 document.addEventListener('click',e=>{if(!e.target.closest('.searchWrap'))results.style.display='none'});
 for(const [k,u] of Object.entries(universes)){const el=document.createElement('div');el.className='legendItem';el.innerHTML=`<span class=swatch style="color:${u.color}"></span>${u.name}`;document.getElementById('legend').appendChild(el)}
-render();if(byId.dpw)select('dpw');else if(titles.length)select(titles[0].id);
+
+// v017 options panel
+const optionsBtn=document.getElementById('optionsBtn');
+const optionsPanel=document.getElementById('optionsPanel');
+const optionsBackdrop=document.getElementById('optionsBackdrop');
+function openOptions(){optionsPanel.classList.add('open');optionsBackdrop.classList.add('open');optionsPanel.setAttribute('aria-hidden','false')}
+function closeOptions(){optionsPanel.classList.remove('open');optionsBackdrop.classList.remove('open');optionsPanel.setAttribute('aria-hidden','true')}
+optionsBtn.onclick=openOptions;
+optionsBackdrop.onclick=closeOptions;
+document.getElementById('closeOptionsBtn').onclick=closeOptions;
+
+document.querySelectorAll('#modeControls [data-mode]').forEach(btn=>{
+  btn.onclick=()=>{
+    viewingMode=btn.dataset.mode;
+    document.querySelectorAll('#modeControls [data-mode]').forEach(b=>b.classList.toggle('active',b===btn));
+    applyViewMode();render();if(current)focusSelected();
+  };
+});
+document.getElementById('childrenToggle').onchange=e=>{showChildren=e.target.checked;render();if(current)focusSelected()};
+document.getElementById('groupToggle').onchange=e=>{groupFranchises=e.target.checked;render();if(current)focusSelected()};
+
+const filterHost=document.getElementById('franchiseFilters');
+for(const [key,u] of Object.entries(universes)){
+  const lab=document.createElement('label');lab.className='filterItem';
+  lab.innerHTML=`<input type="checkbox" data-fr="${key}" checked><span class="swatch" style="color:${u.color};width:9px;height:9px"></span><span>${u.name}</span>`;
+  filterHost.appendChild(lab);
+}
+filterHost.querySelectorAll('input[data-fr]').forEach(cb=>{
+  cb.onchange=()=>{
+    if(cb.checked)activeFranchises.add(cb.dataset.fr);else activeFranchises.delete(cb.dataset.fr);
+    render();if(current)focusSelected();
+  };
+});
+document.getElementById('clearFiltersBtn').onclick=()=>{
+  activeFranchises.clear();
+  document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>{cb.checked=true;activeFranchises.add(cb.dataset.fr)});
+  render();if(current)focusSelected();
+};
+
+function latestReleasedTitle(){
+  const released=titles.filter(t=>String(t.status||'').toLowerCase()==='released');
+  if(!released.length)return titles[titles.length-1]?.id;
+  // Titles are stored in release-order sequence; for same year, later record wins.
+  let best=released[0],bestIndex=titles.indexOf(best);
+  for(const t of released){
+    const idx=titles.indexOf(t);
+    if(t.y>best.y||(t.y===best.y&&idx>bestIndex)){best=t;bestIndex=idx;}
+  }
+  return best?.id;
+}
+
+render();const defaultId=latestReleasedTitle();if(defaultId&&byId[defaultId])select(defaultId);else if(titles.length)select(titles[0].id);
 </script>
 </body></html>
