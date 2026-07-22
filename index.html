@@ -152,10 +152,23 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
  .logicControls{margin-left:4px}
 }
 </style>
+
+<style>
+.orderControls{display:flex;align-items:center;gap:6px;margin-left:6px;white-space:nowrap}
+.orderBtn{font-size:10px;padding:6px 8px;border-radius:999px}
+.orderBtn.active{background:#24334c;border-color:#8198bd}
+.yearLabel{
+  position:absolute;left:8px;font-size:9px;color:#6f7f94;letter-spacing:.08em;
+  transform:translateY(-50%);pointer-events:none
+}
+.yearRule{
+  position:absolute;left:0;right:0;height:1px;background:#192335;pointer-events:none
+}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v020 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v021 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -188,7 +201,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   <button class="relevanceBtn" data-main-mode="minimum">Lite</button>
   <button class="relevanceBtn active" data-main-mode="standard">Recommended</button>
   <button class="relevanceBtn" data-main-mode="expanded">Expanded</button>
-  <div id="logicControls" class="logicControls">
+  <div class="orderControls"><span class="relevanceLabel">Order</span><button class="orderBtn active" data-order="story">Story</button><button class="orderBtn" data-order="release">Release</button></div><div id="logicControls" class="logicControls">
     <span class="relevanceLabel">Match</span>
     <button class="logicBtn active" data-logic="union">AND/OR</button>
     <button class="logicBtn" data-logic="intersection">AND</button>
@@ -283,7 +296,7 @@ function appearanceUnitsForInc(iid){return [...new Set((appsByInc.get(iid)||[]).
 
 let current=null,pan={x:0,y:0},scale=1;
 let viewingMode='standard',showChildren=true,groupFranchises=true;
-let focusMode='title',focusCharacterId=null,focusIncarnationIds=new Set(),focusAppearanceIds=new Set(),characterLogic='union';
+let focusMode='title',focusCharacterId=null,focusIncarnationIds=new Set(),focusAppearanceIds=new Set(),characterLogic='union',temporalOrder='story';
 const activeFranchises=new Set(Object.keys(universes));
 const expandedGatewayFranchises=new Set();
 
@@ -543,6 +556,42 @@ function updateFocusBar(){
  document.getElementById('focusSub').textContent=`${focusAppearanceIds.size} matching title${focusAppearanceIds.size===1?'':'s'} · ${viewingMode==='minimum'?'Lite':viewingMode==='standard'?'Recommended':'Expanded'}`;
  document.getElementById('focusChips').innerHTML=labels.map(x=>`<span class="focusChip">${x}</span>`).join('');
 }
+
+const storyAnchorOverrides={
+  cap1:{year:1943,seq:1},
+  cm1:{year:1995,seq:1},
+  ironman1:{year:2010,seq:1},
+  im2:{year:2011,seq:1},
+  thor1:{year:2011,seq:2},
+  hulk:{year:2011,seq:3},
+  av1:{year:2012,seq:1},
+  im3:{year:2012,seq:2},
+  thor2:{year:2013,seq:1},
+  cap2:{year:2014,seq:1},
+  gotg1:{year:2014,seq:2},
+  gotg2:{year:2014,seq:3},
+  av2:{year:2015,seq:1},
+  ant1:{year:2015,seq:2},
+  civilwar:{year:2016,seq:1},
+  bw:{year:2016,seq:2},
+  bp1:{year:2016,seq:3},
+  homecoming:{year:2016,seq:4},
+  ds1:{year:2016,seq:5},
+  thor3:{year:2017,seq:1},
+  iw:{year:2018,seq:1},
+  ant2:{year:2018,seq:2},
+  endgame:{year:2023,seq:1},
+  ffh:{year:2024,seq:1},
+  nwh:{year:2024,seq:2}
+};
+function releaseSortKey(id){
+  const n=byId[id];return {year:Number(n?.y)||0,seq:titles.findIndex(x=>x.id===id)};
+}
+function storySortKey(id){
+  if(storyAnchorOverrides[id])return storyAnchorOverrides[id];
+  const n=byId[id];return {year:Number(n?.y)||0,seq:titles.findIndex(x=>x.id===id)};
+}
+function temporalKey(id){return temporalOrder==='story'?storySortKey(id):releaseSortKey(id)}
 function recalcCharacterAppearances(){
  const sets=[...focusIncarnationIds].map(iid=>new Set(appearanceUnitsForInc(iid)));
  if(!sets.length){focusAppearanceIds=new Set();return}
@@ -566,18 +615,57 @@ function addIncarnationFocus(iid){
  if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();updateFocusBar();renderCharacterFocus();
 }
 function renderCharacterFocus(){
- const ids=[...focusAppearanceIds].filter(id=>byId[id]).sort((a,b)=>(byId[a].y||0)-(byId[b].y||0)||byId[a].t.localeCompare(byId[b].t));
- const mobile=window.innerWidth<=700,nodeW=mobile?96:170,gapX=mobile?18:34,slot=nodeW+gapX,gapY=mobile?132:150,topPad=70,bottomPad=130;
- const w=Math.max(stage.clientWidth||window.innerWidth,80+Math.max(1,Math.min(4,ids.length))*slot),center=w/2,pos={},byYear=new Map();
- for(const id of ids){const y=byId[id].y||0;if(!byYear.has(y))byYear.set(y,[]);byYear.get(y).push(id)}
+ const ids=[...focusAppearanceIds].filter(id=>byId[id]);
+ const mobile=window.innerWidth<=700,nodeW=mobile?96:170,gapX=mobile?18:34,slot=nodeW+gapX,rowGap=mobile?142:158,topPad=76,bottomPad=145;
+ ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq||byId[a].t.localeCompare(byId[b].t)});
+
+ const byYear=new Map();
+ for(const id of ids){const k=temporalKey(id);if(!byYear.has(k.year))byYear.set(k.year,[]);byYear.get(k.year).push(id)}
  const years=[...byYear.keys()].sort((a,b)=>a-b);
- years.forEach((y,ri)=>{const row=byYear.get(y),rw=(row.length-1)*slot;row.forEach((id,i)=>pos[id]={x:center-rw/2+i*slot,y:topPad+ri*gapY})});
- const siblings=characterIncarnations(focusCharacterId).filter(i=>!focusIncarnationIds.has(i["Incarnation ID"]));const gy=topPad+Math.max(0,years.length-1)*gapY+gapY,gateways=[];
- siblings.slice(0,6).forEach((inc,i)=>{const iid=inc["Incarnation ID"],gid="__inc__"+iid;pos[gid]={x:center+((i%3)-1)*slot,y:gy+Math.floor(i/3)*gapY};gateways.push({id:gid,iid})});
- const h=gy+Math.ceil(Math.max(1,siblings.length)/3)*gapY+bottomPad;canvas.style.width=w+'px';canvas.style.height=h+'px';svg.setAttribute('width',w);svg.setAttribute('height',h);nodesEl.innerHTML='';svg.innerHTML='';
- for(let i=1;i<ids.length;i++){const a=pos[ids[i-1]],b=pos[ids[i]],p=document.createElementNS('http://www.w3.org/2000/svg','path'),mid=(a.y+b.y)/2,c=universes[byId[ids[i-1]].u]?.color||'#9aa3ad';p.setAttribute('d',Math.abs(a.x-b.x)<2?`M ${a.x} ${a.y+48} L ${b.x} ${b.y-48}`:`M ${a.x} ${a.y+48} C ${a.x} ${mid},${b.x} ${mid},${b.x} ${b.y-48}`);p.style.stroke=c;p.style.strokeWidth='4px';p.style.opacity='.85';svg.appendChild(p)}
- for(const id of ids){const n=byId[id],u=universes[n.u],el=document.createElement('div');el.className='node'+(id===current?' selected':'');el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';el.style.borderColor=u.color;el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y||'—'}</div><div class=badge>${u.name}</div>`;el.onclick=()=>{current=id;renderCharacterFocus()};nodesEl.appendChild(el)}
- for(const g of gateways){const el=document.createElement('div');el.className='node gatewayNode contextGateway';el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;el.onclick=()=>addIncarnationFocus(g.iid);nodesEl.appendChild(el)}
+ const maxPerYear=Math.max(1,...years.map(y=>byYear.get(y).length));
+ const w=Math.max(stage.clientWidth||window.innerWidth,120+maxPerYear*slot),center=w/2,pos={};
+
+ years.forEach((year,ri)=>{
+   const row=byYear.get(year).sort((a,b)=>temporalKey(a).seq-temporalKey(b).seq||byId[a].t.localeCompare(byId[b].t));
+   const rw=(row.length-1)*slot;
+   row.forEach((id,i)=>pos[id]={x:center-rw/2+i*slot,y:topPad+ri*rowGap});
+ });
+
+ const siblings=characterIncarnations(focusCharacterId).filter(i=>!focusIncarnationIds.has(i["Incarnation ID"]));
+ const gy=topPad+Math.max(0,years.length-1)*rowGap+rowGap,gateways=[];
+ siblings.slice(0,6).forEach((inc,i)=>{const iid=inc["Incarnation ID"],gid="__inc__"+iid;pos[gid]={x:center+((i%3)-1)*slot,y:gy+Math.floor(i/3)*rowGap};gateways.push({id:gid,iid})});
+ const h=gy+Math.ceil(Math.max(1,siblings.length)/3)*rowGap+bottomPad;
+
+ canvas.style.width=w+'px';canvas.style.height=h+'px';svg.setAttribute('width',w);svg.setAttribute('height',h);nodesEl.innerHTML='';svg.innerHTML='';
+
+ // explicit year guides
+ years.forEach((year,ri)=>{
+   const y=topPad+ri*rowGap;
+   const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
+   const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.textContent=String(year);nodesEl.appendChild(lab);
+ });
+
+ // connect chronologically left-to-right within each year, then downward to next year.
+ let ordered=[...ids];
+ for(let i=1;i<ordered.length;i++){
+   const a=pos[ordered[i-1]],b=pos[ordered[i]],p=document.createElementNS('http://www.w3.org/2000/svg','path'),mid=(a.y+b.y)/2,c=universes[byId[ordered[i-1]].u]?.color||'#9aa3ad';
+   p.setAttribute('d',Math.abs(a.y-b.y)<2?`M ${a.x+48} ${a.y} L ${b.x-48} ${b.y}`:(Math.abs(a.x-b.x)<2?`M ${a.x} ${a.y+48} L ${b.x} ${b.y-48}`:`M ${a.x} ${a.y+48} C ${a.x} ${mid},${b.x} ${mid},${b.x} ${b.y-48}`));
+   p.style.stroke=c;p.style.strokeWidth='4px';p.style.opacity='.82';svg.appendChild(p);
+ }
+
+ for(const id of ids){
+   const n=byId[id],u=universes[n.u],el=document.createElement('div');el.className='node'+(id===current?' selected':'');
+   el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';el.style.borderColor=u.color;
+   el.innerHTML=`<div class=title>${n.t}</div><div class=year>${temporalKey(id).year}</div><div class=badge>${u.name}</div>`;
+   el.onclick=()=>{current=id;renderCharacterFocus()};nodesEl.appendChild(el)
+ }
+
+ for(const g of gateways){
+   const el=document.createElement('div');el.className='node gatewayNode contextGateway';el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';
+   el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;
+   el.onclick=()=>addIncarnationFocus(g.iid);nodesEl.appendChild(el)
+ }
+
  stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);stage.scrollTop=0;
 }
 function select(id){focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
@@ -706,6 +794,16 @@ document.querySelectorAll('[data-logic]').forEach(btn=>{
    characterLogic=btn.dataset.logic;
    document.querySelectorAll('[data-logic]').forEach(b=>b.classList.toggle('active',b===btn));
    if(focusMode==='character'){recalcCharacterAppearances();updateFocusBar();renderCharacterFocus()}
+ };
+});
+
+document.querySelectorAll('[data-order]').forEach(btn=>{
+ btn.onclick=()=>{
+   temporalOrder=btn.dataset.order;
+   document.querySelectorAll('[data-order]').forEach(b=>b.classList.toggle('active',b===btn));
+   if(focusMode==='character')renderCharacterFocus();
+   else if(current){render();focusSelected()}
+   else render();
  };
 });
 </script>
