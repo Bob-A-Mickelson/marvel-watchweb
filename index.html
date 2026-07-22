@@ -189,10 +189,18 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 .edge.orthogonal{fill:none;stroke-linejoin:round;stroke-linecap:round}
 .contextGateway::after{content:"Add context"}
 </style>
+
+<style>
+/* v024 clean start + parallel crossover lanes */
+.emptyState{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#5f6f84;font-size:12px;letter-spacing:.06em;text-align:center;padding:24px;
+}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v023 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v024 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -651,9 +659,8 @@ function addIncarnationFocus(iid){
 function renderCharacterFocus(){
   const mobile=window.innerWidth<=700;
   const nodeW=mobile?96:170, nodeHalf=nodeW/2, gapX=mobile?30:48, subStep=nodeW+gapX;
-  const branchGap=mobile?74:110, rowGap=mobile?150:168, topPad=86, bottomPad=170;
+  const branchGap=mobile?74:110, rowGap=mobile?150:168, topPad=86, bottomPad=220;
 
-  // One logical branch per selected incarnation/context.
   const branches=[];
   for(const iid of focusIncarnationIds){
     const ids=appearanceUnitsForInc(iid).filter(id=>byId[id]);
@@ -666,7 +673,6 @@ function renderCharacterFocus(){
     branches.push({key:'venom',label:'Venom-Verse',ids,color:universes.venom?.color||'#b46cff',type:'context'});
   }
 
-  // Determine visible IDs.
   let visibleIds=new Set();
   if(characterLogic==='intersection' && focusIncarnationIds.size>1){
     const sets=[...focusIncarnationIds].map(iid=>new Set(appearanceUnitsForInc(iid)));
@@ -680,7 +686,6 @@ function renderCharacterFocus(){
   const years=[...new Set(ids.map(id=>temporalKey(id).year))].sort((a,b)=>a-b);
   const yearIndex=new Map(years.map((y,i)=>[y,i]));
 
-  // Membership map: a shared crossover title can belong to several incarnation branches.
   const memberships=new Map();
   for(const b of branches){
     for(const id of b.ids){
@@ -690,7 +695,6 @@ function renderCharacterFocus(){
     }
   }
 
-  // Calculate how wide each branch must be to support multiple same-year titles without overlap.
   const branchWidths=new Map();
   for(const b of branches){
     let maxSameYear=1;
@@ -700,13 +704,12 @@ function renderCharacterFocus(){
       yrCounts.set(y,(yrCounts.get(y)||0)+1);
       maxSameYear=Math.max(maxSameYear,yrCounts.get(y));
     }
-    branchWidths.set(b.key, maxSameYear*nodeW + Math.max(0,maxSameYear-1)*gapX);
+    branchWidths.set(b.key,maxSameYear*nodeW+Math.max(0,maxSameYear-1)*gapX);
   }
 
-  // Place branch centers left-to-right with enough room for their widest row.
   const totalWidth=[...branches].reduce((sum,b)=>sum+(branchWidths.get(b.key)||nodeW),0)+Math.max(0,branches.length-1)*branchGap;
   const viewport=stage.clientWidth||window.innerWidth;
-  const w=Math.max(viewport,totalWidth+140);
+  const w=Math.max(viewport,totalWidth+160);
   const center=w/2;
   const xByBranch=new Map();
   let cursor=center-totalWidth/2;
@@ -718,12 +721,11 @@ function renderCharacterFocus(){
 
   const pos={};
 
-  // First pass: position non-shared titles within each branch/year.
   for(const b of branches){
     const branchX=xByBranch.get(b.key);
     const byYear=new Map();
     for(const id of b.ids.filter(id=>visibleIds.has(id))){
-      if((memberships.get(id)||[]).length>1)continue; // shared titles handled later
+      if((memberships.get(id)||[]).length>1)continue;
       const y=temporalKey(id).year;
       if(!byYear.has(y))byYear.set(y,[]);
       byYear.get(y).push(id);
@@ -735,17 +737,12 @@ function renderCharacterFocus(){
     }
   }
 
-  // Shared crossover titles: anchor to the average of member branch centers.
-  // If its "home" branch already has another title in the same year, shift shared title to the right
-  // so same-year chronology remains left-to-right instead of stacking.
   for(const id of ids.filter(id=>(memberships.get(id)||[]).length>1)){
     const keys=memberships.get(id)||[];
     const xs=keys.map(k=>xByBranch.get(k)).filter(Number.isFinite);
     let x=xs.length?xs.reduce((a,b)=>a+b,0)/xs.length:center;
     const year=temporalKey(id).year;
     const y=topPad+(yearIndex.get(year)||0)*rowGap;
-
-    // Prefer the selected/MCU branch as the horizontal ordering home.
     const homeKey=keys.find(k=>k!=='venom' && incarnationLabel(k).includes('Tom Holland')) || keys[0];
     const sameYearHome=branches.find(b=>b.key===homeKey)?.ids.filter(other=>
       other!==id && visibleIds.has(other) && temporalKey(other).year===year && (memberships.get(other)||[]).length===1
@@ -753,39 +750,42 @@ function renderCharacterFocus(){
     if(sameYearHome.length){
       sameYearHome.sort((a,b)=>temporalKey(a).seq-temporalKey(b).seq);
       const latestX=Math.max(...sameYearHome.map(other=>pos[other]?.x??x));
-      x=Math.max(x, latestX+subStep);
+      x=Math.max(x,latestX+subStep);
     }
     pos[id]={x,y};
   }
 
-  // Gateways for unselected sibling incarnations.
+  // All add-context gateways share ONE horizontal row beneath the timeline.
   const siblings=characterIncarnations(focusCharacterId).filter(i=>!focusIncarnationIds.has(i["Incarnation ID"]));
   const gateways=[];
-  const gatewayY=topPad+years.length*rowGap+rowGap*.35;
-  siblings.slice(0,6).forEach((inc,i)=>{
-    const iid=inc["Incarnation ID"],gid="__inc__"+iid;
-    pos[gid]={x:center+((i%3)-1)*subStep,y:gatewayY+Math.floor(i/3)*rowGap};
-    gateways.push({id:gid,iid,type:'inc'});
-  });
+  const gatewayY=topPad+Math.max(1,years.length)*rowGap+rowGap*.35;
+  const gatewayItems=siblings.slice(0,6).map(inc=>({type:'inc',iid:inc["Incarnation ID"]}));
   if(normalizedCharacterName(focusCharacterId)==='peter parker' && !extraContextBranches.has('venom')){
-    const gid='__context__venom';
-    pos[gid]={x:center,y:gatewayY+Math.ceil(Math.max(1,siblings.length)/3)*rowGap};
-    gateways.push({id:gid,type:'venom'});
+    gatewayItems.push({type:'venom'});
   }
+  const gatewayCount=Math.max(1,gatewayItems.length);
+  const gatewayRowWidth=(gatewayCount-1)*subStep;
+  gatewayItems.forEach((g,i)=>{
+    const gid=g.type==='inc'?"__inc__"+g.iid:'__context__venom';
+    pos[gid]={x:center-gatewayRowWidth/2+i*subStep,y:gatewayY};
+    gateways.push({id:gid,...g});
+  });
 
-  const h=(gateways.length?Math.max(...gateways.map(g=>pos[g.id].y)):topPad+(years.length-1)*rowGap)+bottomPad;
+  const contentBottom=Math.max(
+    topPad+(Math.max(0,years.length-1))*rowGap+nodeW,
+    gateways.length?gatewayY+nodeW:0
+  );
+  const h=contentBottom+bottomPad;
   canvas.style.width=w+'px';canvas.style.height=h+'px';
   svg.setAttribute('width',w);svg.setAttribute('height',h);
   nodesEl.innerHTML='';svg.innerHTML='';
 
-  // Year guides.
   years.forEach((year,ri)=>{
     const y=topPad+ri*rowGap;
     const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
     const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.textContent=String(year);nodesEl.appendChild(lab);
   });
 
-  // Branch labels.
   for(const b of branches){
     const lab=document.createElement('div');lab.className='branchLabel';
     lab.style.left=xByBranch.get(b.key)+'px';lab.textContent=b.label;nodesEl.appendChild(lab);
@@ -796,25 +796,26 @@ function renderCharacterFocus(){
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
     let d;
     if(Math.abs(a.y-z.y)<2){
-      // Same chronological row: side-to-side, always left -> right.
-      const left=a.x<=z.x?a:z, right=a.x<=z.x?z:a;
+      const left=a.x<=z.x?a:z,right=a.x<=z.x?z:a;
       d=`M ${left.x+nodeHalf} ${left.y} L ${right.x-nodeHalf} ${right.y}`;
     }else if(Math.abs(a.x-z.x)<2){
       d=`M ${a.x} ${a.y+48} L ${z.x} ${z.y-48}`;
     }else{
-      // Different rows: run vertically for the long span, then horizontal near the destination,
-      // and finally enter the TOP of the destination.
-      const elbowY=z.y-64;
+      const elbowY=z.y-(opts.laneOffset??64);
       d=`M ${a.x} ${a.y+48} L ${a.x} ${elbowY} L ${z.x} ${elbowY} L ${z.x} ${z.y-48}`;
     }
-    path.setAttribute('d',d);
-    path.setAttribute('class','edge orthogonal'+(opts.reference?' reference':''));
+    path.setAttribute('d',d);path.setAttribute('class','edge orthogonal'+(opts.reference?' reference':''));
     path.style.stroke=color;path.style.strokeWidth='4px';path.style.opacity=opts.opacity??'.88';
-    if(opts.dash)path.style.strokeDasharray=opts.dash;
     svg.appendChild(path);
   }
 
-  // Each branch is sequenced independently. This prevents Raimi -> Amazing -> MCU false sequel chains.
+  // Branch-independent sequencing. For shared crossover targets, reserve parallel "lanes"
+  // so blue/green/purple lines remain individually traceable instead of painting over one another.
+  const sharedArrivalIndex=new Map();
+  for(const id of ids){
+    if((memberships.get(id)||[]).length>1)sharedArrivalIndex.set(id,0);
+  }
+
   for(const b of branches){
     const branchIds=b.ids.filter(id=>visibleIds.has(id)&&pos[id]).sort((a,bid)=>{
       const ka=temporalKey(a),kb=temporalKey(bid);return ka.year-kb.year||ka.seq-kb.seq;
@@ -822,16 +823,23 @@ function renderCharacterFocus(){
     for(let i=1;i<branchIds.length;i++){
       const from=branchIds[i-1],to=branchIds[i];
       const color=b.color||universes[byId[from]?.u]?.color||'#9aa3ad';
-      drawOrthogonal(pos[from],pos[to],color);
+      let laneOffset=64;
+      if(sharedArrivalIndex.has(to)){
+        const lane=sharedArrivalIndex.get(to);
+        laneOffset=58+lane*10; // adjacent parallel approach lanes
+        sharedArrivalIndex.set(to,lane+1);
+      }
+      drawOrthogonal(pos[from],pos[to],color,{laneOffset});
     }
   }
 
-  // Venom-Verse is contextual rather than a Peter appearance, but its bridge into NWH is a real crossover cue.
+  // Venom contextual bridge joins the same shared-target lane family.
   if(extraContextBranches.has('venom') && pos['venom2'] && pos['nwh']){
-    drawOrthogonal(pos['venom2'],pos['nwh'],universes.venom?.color||'#b46cff',{opacity:'.75'});
+    const lane=sharedArrivalIndex.get('nwh')||0;
+    drawOrthogonal(pos['venom2'],pos['nwh'],universes.venom?.color||'#b46cff',{opacity:'.78',laneOffset:58+lane*10});
+    sharedArrivalIndex.set('nwh',lane+1);
   }
 
-  // Nodes.
   for(const id of ids){
     const n=byId[id],u=universes[n.u],el=document.createElement('div');
     el.className='node'+(id===current?' selected':'');
@@ -840,7 +848,6 @@ function renderCharacterFocus(){
     el.onclick=()=>{current=id;renderCharacterFocus()};nodesEl.appendChild(el);
   }
 
-  // Gateways.
   for(const g of gateways){
     const el=document.createElement('div');el.className='node gatewayNode contextGateway';
     el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';
@@ -855,7 +862,8 @@ function renderCharacterFocus(){
   }
 
   updateFocusBar();
-  stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);stage.scrollTop=0;
+  stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);
+  stage.scrollTop=0;
 }
 function select(id){extraContextBranches.clear();focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
@@ -955,10 +963,11 @@ function latestReleasedTitle(){
   return best?.id;
 }
 
-// v018 default: clean MCU Films overview. Other franchises are one tap away via Options/See All.
-activeFranchises.clear();activeFranchises.add('mcu');
-document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=cb.dataset.fr==='mcu');
-current=null;render();stage.scrollLeft=Math.max(0,(canvas.scrollWidth-stage.clientWidth)/2);stage.scrollTop=0;
+// v024 default: truly blank canvas until the user selects a character.
+focusMode='title';current=null;activeFranchises.clear();
+document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=false);
+canvas.style.width='100%';canvas.style.height='420px';svg.innerHTML='';nodesEl.innerHTML='<div class="emptyState">Search for a Marvel character to begin.</div>';
+stage.scrollLeft=0;stage.scrollTop=0;
 
 // v018 See All behavior: first tap = all categories; selected-tree gateways remain the cleaner expansion method.
 document.getElementById('headerAllBtn').onclick=()=>{
