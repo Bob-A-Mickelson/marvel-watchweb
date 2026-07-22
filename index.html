@@ -97,10 +97,39 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 }
 </style>
 
+
+<style>
+/* v018 overview + expandable franchise gateways */
+.node.gatewayNode{
+  border-style:dashed;
+  background:linear-gradient(180deg,#101827ee,#0b111ddd);
+  opacity:.72;
+  cursor:pointer;
+}
+.node.gatewayNode .title{font-size:13px}
+.node.gatewayNode .year{display:none}
+.node.gatewayNode .badge{opacity:.8}
+.node.gatewayNode::after{
+  content:"Tap to expand";
+  display:block;
+  margin-top:9px;
+  font-size:9px;
+  color:#aeb8c7;
+  text-transform:uppercase;
+  letter-spacing:.09em;
+}
+.node.gatewayNode.expanded::after{content:"Tap to collapse"}
+.overviewHint{
+  position:absolute;left:12px;top:12px;z-index:6;
+  font-size:10px;color:#75849a;letter-spacing:.06em;
+  pointer-events:none
+}
+</style>
+
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v017 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v018 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -196,6 +225,26 @@ const byId=Object.fromEntries(titles.map(x=>[x.id,x]));
 let current=null,pan={x:0,y:0},scale=1;
 let viewingMode='standard',showChildren=true,groupFranchises=true;
 const activeFranchises=new Set(Object.keys(universes));
+const expandedGatewayFranchises=new Set();
+
+function primaryCategoryOf(id){return byId[id]?.u||null}
+function hiddenFranchiseGroups(selectedId,ancSet){
+  const primary=primaryCategoryOf(selectedId);
+  const groups=new Map();
+  for(const id of ancSet){
+    if(id===selectedId)continue;
+    const n=byId[id]; if(!n||n.u===primary||expandedGatewayFranchises.has(n.u))continue;
+    if(!groups.has(n.u))groups.set(n.u,[]);
+    groups.get(n.u).push(id);
+  }
+  return groups;
+}
+function gatewayId(fr){return "__gateway__"+fr}
+function toggleGateway(fr){
+  if(expandedGatewayFranchises.has(fr))expandedGatewayFranchises.delete(fr);else expandedGatewayFranchises.add(fr);
+  render();if(current)focusSelected();
+}
+
 const stage=document.getElementById('stage'),canvas=document.getElementById('canvas'),nodesEl=document.getElementById('nodes'),svg=document.getElementById('edges');
 
 const tierAllow={
@@ -252,117 +301,107 @@ function fullLayout(){
   return {pos,w:margin*2+(cols-1)*gapX,h:margin*2+Math.ceil(sorted.length/cols)*gapY};
 }
 function ancestryLayout(selectedId){
-  const anc=ancestorsOf(selectedId,new Set());anc.add(selectedId);
+  const allAnc=ancestorsOf(selectedId,new Set());allAnc.add(selectedId);
   const children=showChildren?directChildrenOf(selectedId):[];
-  const gens=generationMap(selectedId);
-  const spine=longestPath(selectedId),spineSet=new Set(spine);
+  const primary=primaryCategoryOf(selectedId);
+  const hiddenGroups=hiddenFranchiseGroups(selectedId,allAnc);
+
+  // Visible ancestry = selected's own franchise + explicitly expanded gateway franchises.
+  const anc=new Set([...allAnc].filter(id=>{
+    if(id===selectedId)return true;
+    const u=byId[id]?.u;
+    return u===primary||expandedGatewayFranchises.has(u);
+  }));
+  anc.add(selectedId);
+
+  // Generations are computed from the full ancestry so gateway placement reflects true depth.
+  const fullGens=generationMap(selectedId);
+  const gens={};
+  for(const id of anc)gens[id]=fullGens[id]??0;
+  const spine=longestPath(selectedId).filter(id=>anc.has(id));
+  const spineSet=new Set(spine);
   const mobile=window.innerWidth<=700;
 
+  const nodeW=mobile?96:170,gapX=mobile?18:34,slot=nodeW+gapX;
+  const gapY=mobile?132:155,topPad=mobile?80:110,bottomPad=mobile?120:140,sidePad=mobile?28:70;
+  const pos={};
   const groups={};
-  for(const id of anc){
-    const g=gens[id]??0;
-    (groups[g]??=[]).push(id);
-  }
+  for(const id of anc){const g=gens[id]??0;(groups[g]??=[]).push(id)}
   const maxG=Math.max(0,...Object.values(gens));
 
-  const nodeW=mobile?96:170;
-  const gapX=mobile?18:34;
-  const slot=nodeW+gapX;
-  const gapY=mobile?132:155;
-  const topPad=mobile?80:110;
-  const bottomPad=mobile?110:130;
-  const sidePad=mobile?28:70;
+  const familyRank={mcu:0,mcuD:1,mcuTV:2,mcuS:3,foxX:10,dd03:11,foxFF:12,blade:20,raimi:30,webb:31,spiderverse:32,venom:33,xanim:34,legacy:40,other:50};
 
-  const pos={};
-
-  // Build stable franchise lanes so same-color branches stay together vertically.
-  const nonSpine=[...anc].filter(id=>!spineSet.has(id));
+  // Lane allocation for visible real nodes.
   const laneStats=new Map();
-  for(const id of nonSpine){
+  for(const id of anc){
+    if(spineSet.has(id))continue;
     const key=byId[id]?.u||'other';
     if(!laneStats.has(key))laneStats.set(key,{key,count:0,maxPerGen:1,maxDepth:0});
-    const s=laneStats.get(key);s.count++;
-    s.maxDepth=Math.max(s.maxDepth,gens[id]||0);
+    const s=laneStats.get(key);s.count++;s.maxDepth=Math.max(s.maxDepth,gens[id]||0);
   }
   for(const [key,s] of laneStats){
     let mx=1;
     for(const row of Object.values(groups))mx=Math.max(mx,row.filter(id=>(byId[id]?.u||'other')===key&&!spineSet.has(id)).length);
     s.maxPerGen=mx;
   }
-
-  const familyRank={mcu:0,mcuD:1,mcuTV:2,mcuS:3,foxX:10,dd03:11,foxFF:12,blade:20,raimi:30,webb:31,spiderverse:32,venom:33,xanim:34,legacy:40,other:50};
-  let lanes=[...laneStats.values()].sort((a,b)=>{
-    if(!groupFranchises)return b.maxDepth-a.maxDepth||b.count-a.count;
-    return (familyRank[a.key]??50)-(familyRank[b.key]??50)||b.count-a.count||b.maxDepth-a.maxDepth;
-  });
-
-  const lanePlacement=new Map();
-  let leftCursor=1,rightCursor=1;
+  const lanes=[...laneStats.values()].sort((a,b)=>(familyRank[a.key]??50)-(familyRank[b.key]??50)||b.maxDepth-a.maxDepth);
+  const lanePlacement=new Map();let leftCursor=1,rightCursor=1;
   lanes.forEach((lane,i)=>{
-    // Keep related franchise families contiguous by stable ordering; alternate whole lane blocks, not individual nodes.
-    const width=Math.max(1,lane.maxPerGen);
-    const side=i%2===0?-1:1;
-    if(side<0){
-      const centerStep=leftCursor+(width-1)/2;
-      lanePlacement.set(lane.key,{side,centerStep,width});
-      leftCursor+=width+0.45;
-    }else{
-      const centerStep=rightCursor+(width-1)/2;
-      lanePlacement.set(lane.key,{side,centerStep,width});
-      rightCursor+=width+0.45;
-    }
+    const width=Math.max(1,lane.maxPerGen),side=i%2===0?-1:1;
+    if(side<0){lanePlacement.set(lane.key,{side,centerStep:leftCursor+(width-1)/2,width});leftCursor+=width+.45}
+    else{lanePlacement.set(lane.key,{side,centerStep:rightCursor+(width-1)/2,width});rightCursor+=width+.45}
   });
 
-  const maxStep=Math.max(leftCursor,rightCursor,1);
+  // Reserve gateway boxes as whole franchise branches, not individual nodes.
+  const gatewayList=[...hiddenGroups.keys()].sort((a,b)=>(familyRank[a]??50)-(familyRank[b]??50));
+  const gatewaySlots=Math.max(0,Math.ceil(gatewayList.length/2));
+  const maxStep=Math.max(leftCursor,rightCursor,gatewaySlots+1,1);
   const viewport=Math.max(300,stage.clientWidth||window.innerWidth);
   const needed=sidePad*2+(maxStep*2+1)*slot;
-  const w=Math.max(viewport,needed);
-  const center=w/2;
+  const w=Math.max(viewport,needed),center=w/2;
 
   for(let g=maxG;g>=0;g--){
-    const row=(groups[g]||[]).slice();
-    const y=topPad+(maxG-g)*gapY;
+    const row=(groups[g]||[]).slice(),y=topPad+(maxG-g)*gapY;
     const spineId=row.find(id=>spineSet.has(id))||null;
     if(spineId)pos[spineId]={x:center,y};
-
     const byLane=new Map();
     for(const id of row.filter(id=>id!==spineId)){
-      const key=byId[id]?.u||'other';
-      if(!byLane.has(key))byLane.set(key,[]);
-      byLane.get(key).push(id);
+      const key=byId[id]?.u||'other';if(!byLane.has(key))byLane.set(key,[]);byLane.get(key).push(id)
     }
     for(const [key,ids] of byLane){
       ids.sort((a,b)=>byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t));
       const lane=lanePlacement.get(key)||{side:1,centerStep:1,width:ids.length};
-      const laneCenter=center+lane.side*lane.centerStep*slot;
-      const rowWidth=(ids.length-1)*slot;
+      const laneCenter=center+lane.side*lane.centerStep*slot,rowWidth=(ids.length-1)*slot;
       ids.forEach((id,i)=>pos[id]={x:laneCenter-rowWidth/2+i*slot,y});
     }
   }
 
-  // Selected title is always centered near the bottom.
   const selectedY=topPad+maxG*gapY;
   pos[selectedId]={x:center,y:selectedY};
 
-  // Direct children form a translucent selectable row beneath the selection.
-  if(children.length){
-    const ordered=[...children].sort((a,b)=>{
-      const ua=byId[a]?.u||'',ub=byId[b]?.u||'';
-      return (familyRank[ua]??50)-(familyRank[ub]??50)||byId[a].y-byId[b].y||byId[a].t.localeCompare(byId[b].t);
+  // Gateways sit one row above selection. They summarize whole hidden franchise branches.
+  const gateways=[];
+  if(gatewayList.length){
+    const gy=Math.max(topPad,selectedY-gapY);
+    const rowWidth=(gatewayList.length-1)*slot;
+    gatewayList.forEach((fr,i)=>{
+      const gid=gatewayId(fr),ids=hiddenGroups.get(fr)||[];
+      pos[gid]={x:center-rowWidth/2+i*slot,y:gy};
+      gateways.push({id:gid,fr,ids});
     });
+  }
+
+  if(children.length){
+    const ordered=[...children].sort((a,b)=>(familyRank[byId[a]?.u]??50)-(familyRank[byId[b]?.u]??50)||byId[a].y-byId[b].y);
     const rowWidth=(ordered.length-1)*slot;
     ordered.forEach((id,i)=>pos[id]={x:center-rowWidth/2+i*slot,y:selectedY+gapY});
   }
 
-  return {
-    pos,w,
-    h:selectedY+(children.length?gapY:0)+bottomPad,
-    anc,children:new Set(children),spineSet
-  };
+  return {pos,w,h:selectedY+(children.length?gapY:0)+bottomPad,anc,children:new Set(children),spineSet,gateways,allAnc};
 }
 function render(){
   const selected=current?ancestryLayout(current):fullLayout();
-  const pos=selected.pos, anc=selected.anc||new Set(), childSet=selected.children||new Set();
+  const pos=selected.pos, anc=selected.anc||new Set(), childSet=selected.children||new Set(), gateways=selected.gateways||[];
 
   let shown;
   if(current){
@@ -374,29 +413,30 @@ function render(){
 
   canvas.style.width=selected.w+'px';canvas.style.height=selected.h+'px';
   svg.setAttribute('width',selected.w);svg.setAttribute('height',selected.h);
-  nodesEl.innerHTML='';
-  svg.innerHTML='';
+  nodesEl.innerHTML='';svg.innerHTML='';
 
+  // Real edges among visible nodes.
   for(const n of titles){
     if(!shown.has(n.id))continue;
     for(const p of n.p||[]){
       if(!shown.has(p)||!pos[p]||!pos[n.id])continue;
       const a=pos[p],b=pos[n.id],path=document.createElementNS('http://www.w3.org/2000/svg','path');
       const nodeHalf=window.innerWidth<=700?50:35,midY=(a.y+b.y)/2;
-      const sameColumn=Math.abs(a.x-b.x)<2;
-      path.setAttribute('d',sameColumn
-        ? `M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`
-        : `M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
-      const link=(n.links||[]).find(l=>l.id===p);
-      const reference=link&&["NEC_ENRICH","NEC_EASTER"].includes(link.tier);
-      path.setAttribute('class','edge '+(reference?'reference':'required'));
-      const sourceColor=universes[byId[p]?.u]?.color || '#9aa3ad';
-      path.setAttribute('stroke',sourceColor);
-      path.setAttribute('stroke-width','4');
-      path.style.stroke=sourceColor;
-      path.style.strokeWidth='4px';
-      path.style.opacity=reference?'.55':'.9';
-      svg.appendChild(path);
+      path.setAttribute('d',Math.abs(a.x-b.x)<2?`M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`:`M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
+      const link=(n.links||[]).find(l=>l.id===p),reference=link&&["NEC_ENRICH","NEC_EASTER"].includes(link.tier);
+      const sourceColor=universes[byId[p]?.u]?.color||'#9aa3ad';
+      path.setAttribute('class','edge '+(reference?'reference':'required'));path.style.stroke=sourceColor;path.style.strokeWidth='4px';path.style.opacity=reference?'.55':'.9';svg.appendChild(path);
+    }
+  }
+
+  // Gateway connector: whole hidden franchise -> selected title.
+  if(current&&pos[current]){
+    for(const g of gateways){
+      if(!pos[g.id])continue;
+      const a=pos[g.id],b=pos[current],path=document.createElementNS('http://www.w3.org/2000/svg','path');
+      const midY=(a.y+b.y)/2,color=universes[g.fr]?.color||'#9aa3ad';
+      path.setAttribute('d',`M ${a.x} ${a.y+48} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-48}`);
+      path.style.stroke=color;path.style.strokeWidth='4px';path.style.opacity='.55';path.setAttribute('class','edge reference');svg.appendChild(path);
     }
   }
 
@@ -404,11 +444,19 @@ function render(){
     if(!shown.has(n.id)||!pos[n.id])continue;
     const u=universes[n.u],el=document.createElement('div');
     el.className='node'+(n.id===current?' selected':'')+(current&&anc.has(n.id)?' ancestorNode':'')+(childSet.has(n.id)?' childNode':'');
-    el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';
-    el.style.borderColor=u.color;
+    el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';el.style.borderColor=u.color;
     el.style.boxShadow=`0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;
     el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y||'—'}</div><div class=badge>${u.name}</div>`;
     el.onclick=()=>select(n.id);nodesEl.appendChild(el);
+  }
+
+  for(const g of gateways){
+    if(!pos[g.id])continue;
+    const u=universes[g.fr]||{name:g.fr,color:'#9aa3ad'},el=document.createElement('div');
+    el.className='node gatewayNode';el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor=u.color;
+    el.style.boxShadow=`0 0 0 1px ${u.color}66,0 0 16px ${u.color}33`;
+    el.innerHTML=`<div class=title>${u.name}</div><div class=badge>${g.ids.length} connected title${g.ids.length===1?'':'s'}</div>`;
+    el.onclick=()=>toggleGateway(g.fr);nodesEl.appendChild(el);
   }
 }
 function focusSelected(){
@@ -490,6 +538,18 @@ function latestReleasedTitle(){
   return best?.id;
 }
 
-render();const defaultId=latestReleasedTitle();if(defaultId&&byId[defaultId])select(defaultId);else if(titles.length)select(titles[0].id);
+// v018 default: clean MCU Films overview. Other franchises are one tap away via Options/See All.
+activeFranchises.clear();activeFranchises.add('mcu');
+document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=cb.dataset.fr==='mcu');
+current=null;render();stage.scrollLeft=Math.max(0,(canvas.scrollWidth-stage.clientWidth)/2);stage.scrollTop=0;
+
+// v018 See All behavior: first tap = all categories; selected-tree gateways remain the cleaner expansion method.
+document.getElementById('headerAllBtn').onclick=()=>{
+  current=null;expandedGatewayFranchises.clear();
+  activeFranchises.clear();
+  for(const k of Object.keys(universes))activeFranchises.add(k);
+  document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=true);
+  render();stage.scrollLeft=Math.max(0,(canvas.scrollWidth-stage.clientWidth)/2);stage.scrollTop=0;
+};
 </script>
 </body></html>
