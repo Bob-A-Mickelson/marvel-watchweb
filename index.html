@@ -26,7 +26,7 @@ button{border:1px solid #2b3850;background:#121a29;color:white;border-radius:10p
 #stage{position:relative;overflow:auto;overscroll-behavior:contain;background-image:linear-gradient(#19213122 1px,transparent 1px),linear-gradient(90deg,#19213122 1px,transparent 1px);background-size:40px 40px;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}#canvas{position:relative;min-width:100%;min-height:100%}
 svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;stroke-width:2;opacity:.58}.edge.required{stroke:#e7edf6;opacity:.8}.edge.reference{stroke-dasharray:7 8;opacity:.45}
 .node{position:absolute;width:170px;min-height:72px;padding:11px 12px;border-radius:13px;background:#0d1320;border:1px solid #263146;transform:translate(-50%,-50%);cursor:pointer;transition:.16s ease;box-shadow:0 5px 18px #0008}
-.node:hover{transform:translate(-50%,-50%) scale(1.03);z-index:10}.node.selected{outline:3px solid #fff;outline-offset:3px;z-index:5}.node.dimmed{opacity:.11;filter:saturate(.2);pointer-events:auto}.node.ancestorNode{opacity:1}.node .title{font-weight:800;font-size:13px;line-height:1.2}.node .year{font-size:11px;color:#a7b2c3;margin-top:5px}.node .badge{display:inline-block;margin-top:7px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:999px;background:#ffffff12;color:#dbe3ef}
+.node:hover{transform:translate(-50%,-50%) scale(1.03);z-index:10}.node.selected{outline:3px solid white;z-index:11;box-shadow:0 0 0 4px #ffffff18,0 0 34px #fff5!important}.node.dimmed{opacity:.11;filter:saturate(.2);pointer-events:auto}.node.ancestorNode{opacity:1}.node .title{font-weight:800;font-size:13px;line-height:1.2}.node .year{font-size:11px;color:#a7b2c3;margin-top:5px}.node .badge{display:inline-block;margin-top:7px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:3px 6px;border-radius:999px;background:#ffffff12;color:#dbe3ef}
 .empty{color:#8d9aad;font-size:14px;line-height:1.5}.ancestorList{font-size:13px}.ancestor{padding:9px 0;border-bottom:1px solid #202a38}.ancestor b{display:block}.ancestor span{color:#8795a8;font-size:11px}
 .note{font-size:12px;color:#92a0b4;line-height:1.5}.pill{display:inline-block;padding:4px 7px;border:1px solid #30405c;border-radius:999px;margin:3px 3px 0 0;font-size:10px;color:#cfd7e5}
 @media(max-width:1000px){main{grid-template-columns:240px 1fr}.right{display:none}.searchWrap{width:45vw}}
@@ -49,7 +49,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v009</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v010</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward.</div></div>
   <button id="headerAllBtn" class="headerAllBtn">See All</button>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -69,15 +69,7 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 </main>
 <script>
 const universes={
-  mcu:{name:'MCU',color:'#2fbf71'},
-  fox:{name:'FOX X-MEN',color:'#d7aa28'},
-  blade:{name:'BLADE',color:'#9aa3ad'},
-  dare:{name:'DAREDEVIL / ELEKTRA',color:'#d94b5f'},
-  ff:{name:'FOX FANTASTIC FOUR',color:'#63d7f2'},
-  sony:{name:'VENOM / SONY',color:'#a855f7'},
-  defenders:{name:'DEFENDERS SAGA',color:'#ef7f4d'},
-  tobey:{name:'TOBEY SPIDER-MAN',color:'#e45d5d'},
-  andrew:{name:'ANDREW GARFIELD SPIDER-MAN',color:'#4aa3ff'}
+ mcu:{name:'MCU',color:'#2fbf71'},raimi:{name:'Raimi Spider-Man',color:'#4aa3ff'},webb:{name:'Amazing Spider-Man',color:'#38d39f'},venom:{name:'Venom / Sony',color:'#a855f7'},foxX:{name:'Fox X-Men',color:'#d7aa28'},foxFF:{name:'Fox Fantastic Four',color:'#63d7f2'},dd03:{name:'Daredevil / Elektra',color:'#d94b5f'},blade:{name:'Blade',color:'#9aa3ad'},defenders:{name:'Defenders Saga',color:'#ef7f4d'},other:{name:'Other connected',color:'#67d4ff'}
 };
 const titles=[
 {id:'ironman',t:'Iron Man',y:2008,u:'mcu'},
@@ -295,8 +287,6 @@ function render(){
         ? `M ${a.x} ${a.y+nodeHalf} L ${b.x} ${b.y-nodeHalf}`
         : `M ${a.x} ${a.y+nodeHalf} C ${a.x} ${midY}, ${b.x} ${midY}, ${b.x} ${b.y-nodeHalf}`);
       path.setAttribute('class','edge '+(n.edge==='reference'?'reference':'required'));
-      const sourceUniverse=universes[byId[p]?.u]||{color:'#9aa3ad'};
-      path.style.stroke=sourceUniverse.color;
       path.style.opacity=n.edge==='reference'?'.55':'.9';
       svg.appendChild(path);
     }
@@ -307,10 +297,7 @@ function render(){
     const u=universes[n.u],el=document.createElement('div');
     el.className='node'+(n.id===current?' selected':'')+(current?' ancestorNode':'');
     el.style.left=pos[n.id].x+'px';el.style.top=pos[n.id].y+'px';
-    el.style.borderColor=u.color;
-    el.style.boxShadow=n.id===current
-      ? `0 0 0 1px ${u.color},0 0 18px ${u.color}55,0 7px 20px #000a`
-      : `0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;
+    el.style.boxShadow=`0 0 0 1px ${u.color}88,0 0 18px ${u.color}44,0 7px 20px #000a`;
     el.innerHTML=`<div class=title>${n.t}</div><div class=year>${n.y}</div><div class=badge>${u.name}</div>`;
     el.onclick=()=>select(n.id);nodesEl.appendChild(el);
   }
