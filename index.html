@@ -237,14 +237,71 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
 .yearLabelFixed.left{left:6px}
 .yearLabelFixed.right{right:6px}
 </style>
+
+<style>
+/* v028 character chips + working year gutters */
+.focusBar{display:none}
+.focusBar.show{display:block}
+.focusChips{display:flex !important;gap:7px;flex-wrap:wrap;margin-top:4px}
+.focusChip{
+  display:inline-flex;align-items:center;gap:7px;
+  font-size:11px;padding:7px 9px;border:1px solid #40516c;border-radius:999px;
+  background:#121c2b;color:#e5ebf4
+}
+.focusChip .removeChar{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:17px;height:17px;border-radius:50%;border:0;background:#25334a;color:#dce5f2;
+  font-size:12px;line-height:1;padding:0
+}
+.addCharChip{
+  border-style:dashed;color:#aebbd0;background:#0e1724
+}
+.addCharPanel{
+  display:none;position:absolute;z-index:95;left:18px;right:18px;top:100%;
+  margin-top:6px;max-height:48vh;overflow:auto;background:#0c1421;
+  border:1px solid #2a3952;border-radius:14px;box-shadow:0 18px 60px #000c;padding:8px
+}
+.addCharPanel.open{display:block}
+.addCharSearch{
+  width:100%;box-sizing:border-box;margin-bottom:8px;padding:10px;border-radius:10px;
+  border:1px solid #30425f;background:#111b29;color:#f4f6fa
+}
+.addCharItem{padding:9px 10px;border-top:1px solid #182437;font-size:12px;cursor:pointer}
+.addCharItem:first-of-type{border-top:0}
+.addCharItem span{display:block;color:#8392a8;font-size:9px;margin-top:2px}
+#yearOverlay{
+  position:absolute;inset:0;z-index:22;pointer-events:none;overflow:hidden
+}
+.yearOverlayLabel{
+  position:absolute;font-size:9px;color:#708198;letter-spacing:.08em;
+  padding:2px 4px;background:#080d15e8;border-radius:4px;transform:translateY(-50%)
+}
+.yearOverlayLabel.left{left:6px}
+.yearOverlayLabel.right{right:6px}
+@media(max-width:700px){
+  .focusChip{font-size:10px;padding:6px 8px}
+  .addCharPanel{left:10px;right:10px}
+}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v027 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v028 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
-<div id="focusBar" class="focusBar"><div id="focusEyebrow" class="focusEyebrow"></div><div id="focusTitle" class="focusTitle"></div><div id="focusSub" class="focusSub"></div></div>
+<div id="focusBar" class="focusBar">
+  <div class="focusCopy">
+    <div id="focusEyebrow" class="focusEyebrow">Characters</div>
+    <div id="focusChips" class="focusChips"></div>
+    <div id="focusSub" class="focusSub"></div>
+  </div>
+</div>
+
+<div id="addCharPanel" class="addCharPanel">
+  <input id="addCharSearch" class="addCharSearch" placeholder="Add another Marvel character">
+  <div id="addCharList"></div>
+</div>
 <div id="searchResults" class="searchResults"></div>
 
 <noscript><div style="padding:16px;background:#401018;color:white;font-family:system-ui">MCU Spiderweb needs JavaScript. Open this HTML file in Safari/Chrome rather than a document preview.</div></noscript>
@@ -297,7 +354,8 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   <h2>Connection rules</h2><div class="note">Solid lines = prerequisite continuity. Dashed lines = meaningful reference/context. A title enters the web only through an on-screen continuity path.</div>
 </aside>
 <section id="stage">
-<div id="yearEdgeGutter" class="yearEdgeGutter"></div><div id="canvas"><svg id="edges"></svg><div id="nodes"></div></div></section>
+<div id="yearOverlay"></div>
+<div id="canvas"><svg id="edges"></svg><div id="nodes"></div></div></section>
 <aside class="right">
   <h2>Required ancestry</h2><div id="ancestors" class="ancestorList"><div class="empty">Nothing selected.</div></div>
   <h2>Viewing modes</h2><div class="card note"><span class="pill">Minimum</span> direct essentials only<br><span class="pill">Full context</span> strong prerequisites<br><span class="pill">Completionist</span> every ancestor in the connected graph</div>
@@ -638,20 +696,45 @@ function clearCharacterSearch(){
   }
 }
 function updateFocusBar(){
- clearCharacterSearch();
- const bar=document.getElementById('focusBar');if(focusMode!=='character'){bar.classList.remove('show');return}
- bar.classList.add('show');document.getElementById('focusEyebrow').textContent='Character view';
- const labels=[...focusIncarnationIds].map(incarnationLabel),ch=characterById[focusCharacterId];
- if(extraContextBranches.has('venom'))labels.push('Venom (Tom Hardy)');
- let titleText='';
- if(labels.length===1)titleText=`${labels[0]} appears in`;
- else if(characterLogic==='intersection')titleText=`${labels.join(' AND ')} appear together in`;
- else titleText=`${labels.join(' AND/OR ')} appear in`;
- document.getElementById('focusTitle').textContent=titleText;
- const contextCount=extraContextBranches.has('venom')?['venom1','venom2','venom3'].filter(id=>byId[id]).length:0;
- const visibleCount=focusAppearanceIds.size+contextCount;
- document.getElementById('focusSub').textContent=`${visibleCount} matching title${visibleCount===1?'':'s'} · Character view`;
- 
+  clearCharacterSearch();
+  const bar=document.getElementById('focusBar'),chips=document.getElementById('focusChips'),sub=document.getElementById('focusSub');
+  if(focusMode!=='character'){
+    bar.classList.remove('show');
+    if(chips)chips.innerHTML='';
+    return;
+  }
+  bar.classList.add('show');
+  chips.innerHTML='';
+  for(const iid of focusIncarnationIds){
+    const chip=document.createElement('span');chip.className='focusChip';
+    chip.innerHTML=`<span>${incarnationLabel(iid)}</span><button class="removeChar" data-remove-inc="${iid}" aria-label="Remove">×</button>`;
+    chips.appendChild(chip);
+  }
+  if(extraContextBranches.has('venom')){
+    const chip=document.createElement('span');chip.className='focusChip';
+    chip.innerHTML=`<span>Venom (Tom Hardy)</span><button class="removeChar" data-remove-context="venom" aria-label="Remove">×</button>`;
+    chips.appendChild(chip);
+  }
+  const add=document.createElement('button');add.className='focusChip addCharChip';add.id='addCharacterBtn';add.textContent='+ Add character';chips.appendChild(add);
+
+  const activeCount=focusIncarnationIds.size+(extraContextBranches.has('venom')?1:0);
+  sub.textContent=`${activeCount} active character${activeCount===1?'':'s'} · ${characterLogic==='intersection'?'AND':'AND/OR'} match`;
+
+  chips.querySelectorAll('[data-remove-inc]').forEach(btn=>btn.onclick=()=>{
+    focusIncarnationIds.delete(btn.dataset.removeInc);
+    recalcCharacterAppearances();
+    if(focusIncarnationIds.size===0 && !extraContextBranches.size){
+      resetToBlank();return;
+    }
+    current=[...focusAppearanceIds].sort((a,b)=>(byId[a]?.y||0)-(byId[b]?.y||0)).slice(-1)[0]||null;
+    updateFocusBar();renderCharacterFocus();
+  });
+  chips.querySelectorAll('[data-remove-context]').forEach(btn=>btn.onclick=()=>{
+    extraContextBranches.delete(btn.dataset.removeContext);
+    if(focusIncarnationIds.size===0 && !extraContextBranches.size){resetToBlank();return;}
+    updateFocusBar();renderCharacterFocus();
+  });
+  add.onclick=()=>openAddCharacterPanel();
 }
 
 const storyAnchorOverrides={
@@ -699,6 +782,42 @@ function recalcCharacterAppearances(){
    for(const s of sets)for(const id of s)focusAppearanceIds.add(id);
  }
 }
+
+function resetToBlank(){
+  focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();extraContextBranches.clear();current=null;
+  const bar=document.getElementById('focusBar');if(bar)bar.classList.remove('show');
+  const s=document.getElementById('search');if(s){s.value='';s.placeholder='Search for a Marvel character to begin';}
+  const overlay=document.getElementById('yearOverlay');if(overlay)overlay.innerHTML='';
+  canvas.style.width='100%';canvas.style.height='420px';svg.innerHTML='';nodesEl.innerHTML='';
+  stage.scrollLeft=0;stage.scrollTop=0;
+}
+function allAddableIncarnations(){
+  return (WATCHWEB_PEOPLE.incarnations||[]).filter(inc=>!focusIncarnationIds.has(inc["Incarnation ID"]));
+}
+function renderAddCharacterList(term=''){
+  const host=document.getElementById('addCharList'),q=term.trim().toLowerCase();
+  const rows=allAddableIncarnations().filter(inc=>incarnationLabel(inc["Incarnation ID"]).toLowerCase().includes(q)).slice(0,80);
+  host.innerHTML=rows.map(inc=>{
+    const iid=inc["Incarnation ID"];
+    return `<div class="addCharItem" data-add-inc="${iid}"><strong>${incarnationLabel(iid)}</strong><span>${appearanceUnitsForInc(iid).length} direct appearances</span></div>`;
+  }).join('') || '<div class="addCharItem">No matching characters</div>';
+  host.querySelectorAll('[data-add-inc]').forEach(el=>el.onclick=()=>{
+    const iid=el.dataset.addInc,inc=incarnationById[iid];
+    if(focusMode!=='character'){
+      enterCharacterFocus(iid);
+    }else{
+      focusIncarnationIds.add(iid);
+      recalcCharacterAppearances();
+      updateFocusBar();renderCharacterFocus();
+    }
+    closeAddCharacterPanel();
+  });
+}
+function openAddCharacterPanel(){
+  const p=document.getElementById('addCharPanel'),s=document.getElementById('addCharSearch');
+  renderAddCharacterList('');p.classList.add('open');s.value='';setTimeout(()=>s.focus(),20);
+}
+function closeAddCharacterPanel(){const p=document.getElementById('addCharPanel');if(p)p.classList.remove('open')}
 function enterCharacterFocus(iid){
  const inc=incarnationById[iid];if(!inc)return;
  focusMode='character';focusCharacterId=inc["Character ID"];focusIncarnationIds=new Set([iid]);characterLogic='union';extraContextBranches.clear();
@@ -711,6 +830,17 @@ function enterCharacterFocus(iid){
 function addIncarnationFocus(iid){
  if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();clearCharacterSearch();updateFocusBar();renderCharacterFocus();
 }
+
+function updateYearOverlayPositions(){
+  const overlay=document.getElementById('yearOverlay');if(!overlay)return;
+  const sy=stage.scrollTop||0;
+  overlay.querySelectorAll('[data-canvas-y]').forEach(el=>{
+    const canvasY=Number(el.dataset.canvasY)||0;
+    el.style.top=(canvasY-sy)+'px';
+    el.style.display=(canvasY-sy<-10||canvasY-sy>stage.clientHeight+10)?'none':'block';
+  });
+}
+stage.addEventListener('scroll',()=>updateYearOverlayPositions(),{passive:true});
 function renderCharacterFocus(){
   const mobile=window.innerWidth<=700;
   const nodeW=mobile?96:170, nodeHalf=nodeW/2, gapX=mobile?30:48, subStep=nodeW+gapX;
@@ -835,8 +965,7 @@ function renderCharacterFocus(){
   svg.setAttribute('width',w);svg.setAttribute('height',h);
   nodesEl.innerHTML='';svg.innerHTML='';
 
-  const yearGutter=document.getElementById('yearEdgeGutter');
-  if(yearGutter)yearGutter.innerHTML='';
+  const yearOverlay=document.getElementById('yearOverlay'); if(yearOverlay)yearOverlay.innerHTML='';
   years.forEach((year,ri)=>{
     const y=topPad+ri*rowGap;
     const rule=document.createElement('div');rule.className='yearRule';rule.style.top=y+'px';nodesEl.appendChild(rule);
@@ -845,11 +974,7 @@ function renderCharacterFocus(){
     const lab=document.createElement('div');lab.className='yearLabel';lab.style.top=y+'px';lab.style.left='8px';lab.textContent=String(year);nodesEl.appendChild(lab);
     const labR=document.createElement('div');labR.className='yearLabel right';labR.style.top=y+'px';labR.style.left=(w-46)+'px';labR.style.right='auto';labR.textContent=String(year);nodesEl.appendChild(labR);
 
-    // Viewport-edge labels: always visible on both sides even after horizontal scrolling.
-    if(yearGutter){
-      const left=document.createElement('div');left.className='yearLabelFixed left';left.style.top=y+'px';left.textContent=String(year);yearGutter.appendChild(left);
-      const right=document.createElement('div');right.className='yearLabelFixed right';right.style.top=y+'px';right.textContent=String(year);yearGutter.appendChild(right);
-    }
+    
   });
 
   for(const b of branches){
@@ -937,7 +1062,7 @@ function renderCharacterFocus(){
   stage.scrollLeft=Math.max(0,(w-stage.clientWidth)/2);
   stage.scrollTop=0;
 }
-function select(id){const yg=document.getElementById('yearEdgeGutter');if(yg)yg.innerHTML='';extraContextBranches.clear();focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
+function select(id){const yg=document.getElementById('yearOverlay');if(yg)yg.innerHTML='';extraContextBranches.clear();focusMode='title';focusCharacterId=null;focusIncarnationIds.clear();focusAppearanceIds.clear();document.getElementById('logicControls').classList.remove('show');updateFocusBar();current=id;const n=byId[id],u=universes[n.u];document.getElementById('selectedCard').innerHTML=`<strong>${n.t}</strong><div class=meta>${n.y||'—'} · ${u.name}${n.format?` · ${n.format}`:''}<br>${(n.p?.length||0)} direct prerequisite connection${n.p?.length===1?'':'s'}</div>`;const an=[...ancestorsOf(id)].map(x=>byId[x]).sort((a,b)=>a.y-b.y);document.getElementById('ancestors').innerHTML=an.length?an.map(a=>`<div class=ancestor><b>${a.t}</b><span>${a.y} · ${universes[a.u].name}</span></div>`).join(''):'<div class=empty>No prerequisites. Press play.</div>';render();focusSelected()}
 const showAll=()=>{current=null;render();stage.scrollTo({top:0,left:0,behavior:'smooth'})};
 document.getElementById('allBtn').onclick=showAll;
 document.getElementById('headerAllBtn').onclick=showAll;
@@ -1038,9 +1163,9 @@ function latestReleasedTitle(){
 // v024 default: truly blank canvas until the user selects a character.
 focusMode='title';current=null;activeFranchises.clear();
 document.querySelectorAll('#franchiseFilters input[data-fr]').forEach(cb=>cb.checked=false);
-const startupSearch=document.getElementById('search');if(startupSearch){startupSearch.value='';startupSearch.setAttribute('value','');startupSearch.placeholder='Search for a Marvel character';}
-const startupYearGutter=document.getElementById('yearEdgeGutter');if(startupYearGutter)startupYearGutter.innerHTML='';
-canvas.style.width='100%';canvas.style.height='420px';svg.innerHTML='';nodesEl.innerHTML='<div class="emptyState">Search for a Marvel character to begin.</div>';
+const startupSearch=document.getElementById('search');if(startupSearch){startupSearch.value='';startupSearch.setAttribute('value','');startupSearch.placeholder='Search for a Marvel character to begin';}
+const startupYearGutter=document.getElementById('yearOverlay');if(startupYearGutter)startupYearGutter.innerHTML='';
+canvas.style.width='100%';canvas.style.height='420px';svg.innerHTML='';nodesEl.innerHTML='<div class="emptyState"></div>';
 stage.scrollLeft=0;stage.scrollTop=0;
 
 // v018 See All behavior: first tap = all categories; selected-tree gateways remain the cleaner expansion method.
@@ -1077,6 +1202,12 @@ document.querySelectorAll('[data-order]').forEach(btn=>{
    else if(current){render();focusSelected()}
    else render();
  };
+});
+
+const addCharSearchInput=document.getElementById('addCharSearch');
+if(addCharSearchInput)addCharSearchInput.oninput=()=>renderAddCharacterList(addCharSearchInput.value);
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#addCharPanel')&&!e.target.closest('#addCharacterBtn'))closeAddCharacterPanel();
 });
 </script>
 </body></html>
