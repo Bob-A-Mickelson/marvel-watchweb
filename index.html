@@ -283,10 +283,33 @@ svg{position:absolute;inset:0;overflow:visible}.edge{fill:none;stroke:#61708a;st
   .addCharPanel{left:10px;right:10px}
 }
 </style>
+
+<style>
+/* v029 dynamic character identity colors */
+.focusChip{
+  display:grid !important;
+  grid-template-columns:1fr auto;
+  grid-template-rows:auto auto;
+  column-gap:8px;
+  min-width:150px;
+  padding:8px 10px !important;
+  border-width:2px !important;
+  border-style:solid !important;
+}
+.focusChip .chipName{grid-column:1;grid-row:1;font-size:11px;font-weight:800;color:#f2f5fa}
+.focusChip .chipContinuity{grid-column:1;grid-row:2;font-size:9px;color:#9aa8ba;margin-top:2px}
+.focusChip .removeChar{grid-column:2;grid-row:1 / span 2;align-self:center}
+.addCharChip{display:inline-flex !important;min-width:auto !important;align-items:center;justify-content:center}
+.node.characterBorder{
+  border:5px solid transparent !important;
+  background-origin:border-box;
+  background-clip:padding-box,border-box;
+}
+</style>
 </head>
 <body>
 <header>
-  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v028 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
+  <div><div class="logo"><span>MARVEL</span> WATCHWEB</div><div class="version">v029 · data v31</div><div class="dataHealth">embedded production adapter · single-file build</div><div class="subtitle">Choose a title. Trace its viewing ancestry upward. · 179 indexed titles</div></div>
   <div class="headerActions"><button id="optionsBtn" class="headerAllBtn">Options</button><button id="headerAllBtn" class="headerAllBtn">See All</button></div>
   <div class="searchWrap"><input id="search" placeholder="Search a movie, series, special…" autocomplete="off"><div id="results" class="results"></div></div>
 </header>
@@ -423,6 +446,42 @@ const incarnationById=Object.fromEntries((WATCHWEB_PEOPLE.incarnations||[]).map(
 const performerById=Object.fromEntries((WATCHWEB_PEOPLE.performers||[]).map(x=>[x["Performer ID"],x]));
 const rolesByInc=new Map();for(const r of WATCHWEB_PEOPLE.performer_roles||[]){const iid=r["Incarnation ID"];if(!iid)continue;if(!rolesByInc.has(iid))rolesByInc.set(iid,[]);rolesByInc.get(iid).push(r)}
 const appsByInc=new Map();for(const a of WATCHWEB_PEOPLE.incarnation_appearances||[]){const iid=a["Incarnation ID"];if(!iid)continue;if(!appsByInc.has(iid))appsByInc.set(iid,[]);appsByInc.get(iid).push(a["Title ID"]||a["Unit ID"])}
+
+const CHARACTER_PALETTE=[
+  '#4DA3FF','#F6C744','#31D17C','#B76CFF',
+  '#FF6B6B','#33D6C5','#FF9F43','#E76FB3'
+];
+function continuityDisplay(iid){
+  const inc=incarnationById[iid]||{};
+  const raw=String(inc["Continuity / Universe"]||"").trim();
+  if(!raw)return "Unknown continuity";
+  if(raw.includes("FOX X-Men"))return "Fox X-Men";
+  if(raw.includes("Earth-838"))return "Earth-838";
+  if(raw.includes("MCU"))return "MCU";
+  if(raw.includes("Raimi"))return "Raimi Spider-Man";
+  if(raw.includes("Amazing Spider-Man"))return "Amazing Spider-Man";
+  return raw;
+}
+function activeCharacterKeys(){
+  const keys=[...focusIncarnationIds];
+  if(extraContextBranches.has('venom'))keys.push('__VENOM_TOM_HARDY__');
+  return keys.slice(0,8);
+}
+function characterColorMap(){
+  const map=new Map();
+  activeCharacterKeys().forEach((k,i)=>map.set(k,CHARACTER_PALETTE[i%CHARACTER_PALETTE.length]));
+  return map;
+}
+function segmentedBorderGradient(colors){
+  if(!colors.length)return '#6c7a90';
+  if(colors.length===1)return colors[0];
+  const segs=16,parts=[];
+  for(let i=0;i<segs;i++){
+    const c=colors[i%colors.length],a=(i/segs)*100,b=((i+1)/segs)*100;
+    parts.push(`${c} ${a}% ${b}%`);
+  }
+  return `conic-gradient(from 45deg, ${parts.join(',')})`;
+}
 function performerNameForInc(iid){const roles=rolesByInc.get(iid)||[];const names=[...new Set(roles.map(r=>performerById[r["Performer ID"]]?.["Performer Name"]).filter(Boolean))];return names[0]||"Unknown performer"}
 function incarnationLabel(iid){const inc=incarnationById[iid]||{};const ch=characterById[inc["Character ID"]]||{};return `${ch["Character Name"]||inc["Incarnation Label"]||iid} (${performerNameForInc(iid)})`}
 function normalizedCharacterName(cid){
@@ -705,27 +764,35 @@ function updateFocusBar(){
   }
   bar.classList.add('show');
   chips.innerHTML='';
+  const cmap=characterColorMap();
+
   for(const iid of focusIncarnationIds){
     const chip=document.createElement('span');chip.className='focusChip';
-    chip.innerHTML=`<span>${incarnationLabel(iid)}</span><button class="removeChar" data-remove-inc="${iid}" aria-label="Remove">×</button>`;
+    const color=cmap.get(iid)||'#6c7a90';
+    chip.style.borderColor=color;
+    chip.innerHTML=`<span class="chipName">${incarnationLabel(iid)}</span><span class="chipContinuity">${continuityDisplay(iid)}</span><button class="removeChar" data-remove-inc="${iid}" aria-label="Remove">×</button>`;
     chips.appendChild(chip);
   }
   if(extraContextBranches.has('venom')){
     const chip=document.createElement('span');chip.className='focusChip';
-    chip.innerHTML=`<span>Venom (Tom Hardy)</span><button class="removeChar" data-remove-context="venom" aria-label="Remove">×</button>`;
+    const color=cmap.get('__VENOM_TOM_HARDY__')||'#6c7a90';
+    chip.style.borderColor=color;
+    chip.innerHTML=`<span class="chipName">Venom (Tom Hardy)</span><span class="chipContinuity">Sony Venom Universe</span><button class="removeChar" data-remove-context="venom" aria-label="Remove">×</button>`;
     chips.appendChild(chip);
   }
-  const add=document.createElement('button');add.className='focusChip addCharChip';add.id='addCharacterBtn';add.textContent='+ Add character';chips.appendChild(add);
 
-  const activeCount=focusIncarnationIds.size+(extraContextBranches.has('venom')?1:0);
-  sub.textContent=`${activeCount} active character${activeCount===1?'':'s'} · ${characterLogic==='intersection'?'AND':'AND/OR'} match`;
+  if(activeCharacterKeys().length<8){
+    const add=document.createElement('button');add.className='focusChip addCharChip';add.id='addCharacterBtn';add.textContent='+ Add character';chips.appendChild(add);
+    add.onclick=()=>openAddCharacterChooser();
+  }
+
+  const activeCount=activeCharacterKeys().length;
+  sub.textContent=`${activeCount} active character${activeCount===1?'':'s'} · ${characterLogic==='intersection'?'AND':'AND/OR'} match · max 8`;
 
   chips.querySelectorAll('[data-remove-inc]').forEach(btn=>btn.onclick=()=>{
     focusIncarnationIds.delete(btn.dataset.removeInc);
     recalcCharacterAppearances();
-    if(focusIncarnationIds.size===0 && !extraContextBranches.size){
-      resetToBlank();return;
-    }
+    if(focusIncarnationIds.size===0 && !extraContextBranches.size){resetToBlank();return;}
     current=[...focusAppearanceIds].sort((a,b)=>(byId[a]?.y||0)-(byId[b]?.y||0)).slice(-1)[0]||null;
     updateFocusBar();renderCharacterFocus();
   });
@@ -734,7 +801,6 @@ function updateFocusBar(){
     if(focusIncarnationIds.size===0 && !extraContextBranches.size){resetToBlank();return;}
     updateFocusBar();renderCharacterFocus();
   });
-  add.onclick=()=>openAddCharacterPanel();
 }
 
 const storyAnchorOverrides={
@@ -813,6 +879,29 @@ function renderAddCharacterList(term=''){
     closeAddCharacterPanel();
   });
 }
+
+function openAddCharacterChooser(){
+  const search=document.getElementById('search'),host=document.getElementById('searchResults');
+  search.value='';
+  search.placeholder='Type a Marvel character name';
+  const rows=allAddableIncarnations().slice(0,60);
+  host.innerHTML='<div class="searchGroupTitle">Add a character</div>'+rows.map(inc=>{
+    const iid=inc["Incarnation ID"];
+    return `<div class="searchItem" data-add-choice="${iid}"><strong>${incarnationLabel(iid)}</strong><span>${continuityDisplay(iid)}</span></div>`;
+  }).join('');
+  host.classList.add('open');
+  host.querySelectorAll('[data-add-choice]').forEach(el=>el.onclick=()=>{
+    const iid=el.dataset.addChoice;
+    if(activeCharacterKeys().length>=8)return;
+    focusIncarnationIds.add(iid);
+    recalcCharacterAppearances();
+    host.classList.remove('open');
+    search.value='';
+    updateFocusBar();
+    renderCharacterFocus();
+  });
+  setTimeout(()=>search.focus(),20);
+}
 function openAddCharacterPanel(){
   const p=document.getElementById('addCharPanel'),s=document.getElementById('addCharSearch');
   renderAddCharacterList('');p.classList.add('open');s.value='';setTimeout(()=>s.focus(),20);
@@ -828,7 +917,7 @@ function enterCharacterFocus(iid){
  clearCharacterSearch();updateFocusBar();renderCharacterFocus();
 }
 function addIncarnationFocus(iid){
- if(!iid)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();clearCharacterSearch();updateFocusBar();renderCharacterFocus();
+ if(!iid||activeCharacterKeys().length>=8)return;focusIncarnationIds.add(iid);recalcCharacterAppearances();clearCharacterSearch();updateFocusBar();renderCharacterFocus();
 }
 
 function updateYearOverlayPositions(){
@@ -842,6 +931,7 @@ function updateYearOverlayPositions(){
 }
 stage.addEventListener('scroll',()=>updateYearOverlayPositions(),{passive:true});
 function renderCharacterFocus(){
+  const cmap=characterColorMap();
   const mobile=window.innerWidth<=700;
   const nodeW=mobile?96:170, nodeHalf=nodeW/2, gapX=mobile?30:48, subStep=nodeW+gapX;
   const branchGap=mobile?74:110, rowGap=mobile?150:168, topPad=86, bottomPad=220;
@@ -850,12 +940,12 @@ function renderCharacterFocus(){
   for(const iid of focusIncarnationIds){
     const ids=appearanceUnitsForInc(iid).filter(id=>byId[id]);
     ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq});
-    branches.push({key:iid,label:incarnationLabel(iid),ids,color:null,type:'incarnation'});
+    branches.push({key:iid,label:incarnationLabel(iid),ids,color:cmap.get(iid)||'#6c7a90',type:'incarnation'});
   }
   if(extraContextBranches.has('venom')){
     const ids=['venom1','venom2','venom3'].filter(id=>byId[id]);
     ids.sort((a,b)=>{const ka=temporalKey(a),kb=temporalKey(b);return ka.year-kb.year||ka.seq-kb.seq});
-    branches.push({key:'venom',label:'Venom (Tom Hardy)',ids,color:universes.venom?.color||'#b46cff',type:'context'});
+    branches.push({key:'venom',label:'Venom (Tom Hardy)',ids,color:cmap.get('__VENOM_TOM_HARDY__')||'#6c7a90',type:'context'});
   }
 
   let visibleIds=new Set();
@@ -1015,7 +1105,7 @@ function renderCharacterFocus(){
     });
     for(let i=1;i<branchIds.length;i++){
       const from=branchIds[i-1],to=branchIds[i];
-      const color=b.color||universes[byId[from]?.u]?.color||'#9aa3ad';
+      const color=b.color||'#6c7a90';
       let laneOffset=64,targetPortOffset=0;
       if(sharedArrivalIndex.has(to)){
         const lane=sharedArrivalIndex.get(to);
@@ -1033,21 +1123,32 @@ function renderCharacterFocus(){
     const lane=sharedArrivalIndex.get('nwh')||0;
     const total=(memberships.get('nwh')||[]).length+1;
     const targetPortOffset=(lane-(total-1)/2)*10;
-    drawOrthogonal(pos['venom2'],pos['nwh'],universes.venom?.color||'#b46cff',{opacity:'.78',laneOffset:58+lane*10,targetPortOffset});
+    drawOrthogonal(pos['venom2'],pos['nwh'],cmap.get('__VENOM_TOM_HARDY__')||'#6c7a90',{opacity:'.78',laneOffset:58+lane*10,targetPortOffset});
     sharedArrivalIndex.set('nwh',lane+1);
   }
 
   for(const id of ids){
-    const n=byId[id],u=universes[n.u],el=document.createElement('div');
-    el.className='node'+(id===current?' selected':'');
-    el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';el.style.borderColor=u.color;
-    el.innerHTML=`<div class=title>${n.t}</div><div class=year>${temporalKey(id).year}</div><div class=badge>${u.name}</div>`;
+    const n=byId[id],el=document.createElement('div');
+    const memberKeys=(memberships.get(id)||[]).map(k=>k==='venom'?'__VENOM_TOM_HARDY__':k);
+    // Explicit Venom crossover membership for No Way Home context.
+    if(id==='nwh'&&extraContextBranches.has('venom')&&!memberKeys.includes('__VENOM_TOM_HARDY__'))memberKeys.push('__VENOM_TOM_HARDY__');
+    const colors=[...new Set(memberKeys.map(k=>cmap.get(k)).filter(Boolean))];
+    el.className='node characterBorder'+(id===current?' selected':'');
+    el.style.left=pos[id].x+'px';el.style.top=pos[id].y+'px';
+    if(colors.length<=1){
+      const c=colors[0]||'#6c7a90';
+      el.style.background=`linear-gradient(#0d1421,#0d1421) padding-box, ${c} border-box`;
+    }else{
+      el.style.background=`linear-gradient(#0d1421,#0d1421) padding-box, ${segmentedBorderGradient(colors)} border-box`;
+    }
+    // Franchise badge removed in character view; character colors now carry identity.
+    el.innerHTML=`<div class=title>${n.t}</div><div class=year>${temporalKey(id).year}</div>`;
     el.onclick=()=>{current=id;renderCharacterFocus()};nodesEl.appendChild(el);
   }
 
   for(const g of gateways){
     const el=document.createElement('div');el.className='node gatewayNode contextGateway';
-    el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor='#8898ad';
+    el.style.left=pos[g.id].x+'px';el.style.top=pos[g.id].y+'px';el.style.borderColor=CHARACTER_PALETTE[Math.min(activeCharacterKeys().length,7)];
     if(g.type==='inc'){
       el.innerHTML=`<div class=title>+ ${incarnationLabel(g.iid)}</div><div class=badge>${appearanceUnitsForInc(g.iid).length} direct appearances</div>`;
       el.onclick=()=>addIncarnationFocus(g.iid);
@@ -1090,7 +1191,7 @@ search.oninput=()=>{
    markup+='<div class="searchGroupTitle">Characters</div>';
    for(const inc of incMatches){
      const iid=inc["Incarnation ID"];
-     markup+=`<div class="searchItem" data-inc="${iid}"><strong>${incarnationLabel(iid)}</strong><span>${inc["Continuity / Universe"]||"Character incarnation"}</span></div>`;
+     markup+=`<div class="searchItem" data-inc="${iid}"><strong>${incarnationLabel(iid)}</strong><span>${continuityDisplay(iid)}</span></div>`;
    }
  }
  if(titleMatches.length){
